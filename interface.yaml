@@ -1,0 +1,33 @@
+cobaya:
+
+  params:
+
+    # These can override the defaults defined by IGMHubCobaya.
+    As:
+      prior:
+        min: 1.0e-9
+        max: 3.0e-9
+      ref:
+        dist: norm
+        loc: 2.1e-9
+        scale: 0.05e-9
+      proposal: 0.02e-9
+
+    ns:
+      prior:
+        min: 0.8
+        max: 1.2
+      ref:
+        dist: norm
+        loc: 0.965
+        scale: 0.01
+      proposal: 0.005
+
+likelihoods:
+
+  cup1d: configs/cup1d.yaml
+
+  cupix: configs/cupix.yaml
+
+  vega: configs/vega.yaml
+```
