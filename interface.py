@@ -1,4 +1,3 @@
-```python
 """
 IGMHub-Cobaya interface.
 
@@ -86,9 +85,7 @@ class IGMHubCobaya:
             return {}
 
         if not isinstance(data, dict):
-            raise TypeError(
-                f"YAML file must contain a dictionary: {filename}"
-            )
+            raise TypeError(f"YAML file must contain a dictionary: {filename}")
 
         return data
 
@@ -110,9 +107,7 @@ class IGMHubCobaya:
         path = path.resolve()
 
         if not path.exists():
-            raise FileNotFoundError(
-                f"Likelihood configuration not found: {path}"
-            )
+            raise FileNotFoundError(f"Likelihood configuration not found: {path}")
 
         return self._read_yaml(path)
 
@@ -120,14 +115,10 @@ class IGMHubCobaya:
         """Validate the top-level interface configuration."""
 
         if "cobaya" not in self.config:
-            raise ValueError(
-                "Interface configuration must contain a 'cobaya' section."
-            )
+            raise ValueError("Interface configuration must contain a 'cobaya' section.")
 
         if "params" not in self.config["cobaya"]:
-            raise ValueError(
-                "The 'cobaya' section must contain a 'params' section."
-            )
+            raise ValueError("The 'cobaya' section must contain a 'params' section.")
 
     # ==================================================================
     # Cobaya
@@ -176,7 +167,6 @@ class IGMHubCobaya:
                 "proposal": 0.005,
                 "latex": r"n_s",
             },
-
             # Fixed cosmology.
             "ombh2": 0.02237,
             "omch2": 0.1200,
@@ -193,9 +183,7 @@ class IGMHubCobaya:
         params.update(self.cobaya_params)
 
         info = {
-            "theory": {
-                "camb": {}
-            },
+            "theory": {"camb": {}},
             "params": params,
         }
 
@@ -289,9 +277,7 @@ class IGMHubCobaya:
             Selected cosmological quantities computed by CAMB.
         """
 
-        results = self.model.loglike(
-            {"As": As, "ns": ns}
-        )
+        results = self.model.loglike({"As": As, "ns": ns})
 
         # The exact set of quantities exposed by CAMB/Cobaya will be
         # expanded as the interface develops.
@@ -439,11 +425,7 @@ class IGMHubCobaya:
         likelihood packages.
         """
 
-        return {
-            key: value
-            for key, value in params.items()
-            if key not in {"As", "ns"}
-        }
+        return {key: value for key, value in params.items() if key not in {"As", "ns"}}
 
 
 class _LikelihoodPlaceholder:
@@ -474,6 +456,5 @@ class _LikelihoodPlaceholder:
         """
 
         raise NotImplementedError(
-            f"The {self.name} likelihood interface has not been "
-            "connected yet."
+            f"The {self.name} likelihood interface has not been " "connected yet."
         )
