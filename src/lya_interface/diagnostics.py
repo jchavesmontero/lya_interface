@@ -6,7 +6,23 @@ from lya_interface.parameters import route
 
 
 def cup1d_component(model):
-    """Select the one P1D component without depending on likelihood ordering."""
+    """Select the unique cup1d P1D likelihood without relying on ordering.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Initialized model containing exactly one Cup1DLikelihood.
+
+    Returns
+    -------
+    Cup1DLikelihood
+        The selected native P1D component.
+
+    Raises
+    ------
+    ValueError
+        If the model has zero or multiple cup1d P1D likelihoods.
+    """
     from lya_interface.likelihoods.cup1d import Cup1DLikelihood
 
     matches = [
@@ -66,8 +82,23 @@ def evaluate_point(model, point):
 
 
 def plot_point(model, point, *, residuals=False, title=None):
-    """
-    Plot every selected redshift with cup1d's maintained panel renderers.
+    """Plot every selected redshift with cup1d's maintained panel renderers.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Initialized dependency graph with one cup1d likelihood.
+    point : mapping
+        Physical sampled values.
+    residuals : bool, default=False
+        Plot residual panels rather than power spectra.
+    title : str, optional
+        Prefix for the correlated joint chi-squared title.
+
+    Returns
+    -------
+    tuple
+        Matplotlib figure and axes.
 
     Error bars and per-bin chi2 are marginal block diagnostics; their sum need
     not equal the correlated joint chi2 displayed in the figure title.
@@ -112,6 +143,23 @@ def plot_point(model, point, *, residuals=False, title=None):
 
 @dataclass(frozen=True)
 class PointFit:
+    """Store the result of a bounded diagnostic minimization.
+
+    Attributes
+    ----------
+    point : dict
+        Best sampled physical parameter values.
+    chi2_data : float
+        P1D data chi-squared at ``point``.
+    success : bool
+        Optimizer convergence flag.
+    message : str
+        Optimizer termination message.
+    evaluations : int
+        Number of objective evaluations.
+    minus2_loglike_total : float
+        Combined likelihood statistic, including every configured likelihood.
+    """
     point: dict
     chi2_data: float
     success: bool

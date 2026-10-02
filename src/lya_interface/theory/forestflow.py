@@ -8,6 +8,7 @@ from lya_interface.parameters import route
 
 
 class ForestFlowTheory(Theory):
+    """Provide deterministic ForestFlow raw-P1D products to Cobaya graphs."""
     stop_at_error: bool = True
     native_config: str | None = None
     parameter_definitions: dict = {}
@@ -23,6 +24,14 @@ class ForestFlowTheory(Theory):
     cosmology_domain: dict = {}
 
     def initialize(self):
+        """Load IGM models, emulator bundle, and native P1D integrator.
+
+        Raises
+        ------
+        ValueError
+            If configuration, emulator aliases/assets, domain definitions, or
+            bundle input/output conventions are incompatible.
+        """
         from forestflow.emulator.p3d_cinn import P3DEmulator
         from forestflow.statistics.p1d import P1DIntegrator
         if not self.native_config or not self.parameter_definitions:
@@ -62,16 +71,54 @@ class ForestFlowTheory(Theory):
         self.request = None
 
     def get_can_support_params(self):
+        """Declare public IGM coefficient names.
+
+        Returns
+        -------
+        list of str
+            Registry-mapped IGM parameters accepted by this component.
+        """
         return list(self.mapping)
 
     def get_can_provide(self):
+        """Declare raw P1D and Arinyo provider products.
+
+        Returns
+        -------
+        list of str
+            ``forestflow_p1d`` and ``forestflow_arinyo``.
+        """
         return ["forestflow_p1d", "forestflow_arinyo"]
 
     def get_requirements(self):
-        # Provider values constrain admitted cosmology without creating CAMB.
+        """Request cosmology values used for explicit domain admission.
+
+        Returns
+        -------
+        dict
+            Required background, radiation, neutrino, and running parameters.
+        """
         return {k: None for k in self.cosmology_domain}
 
     def must_provide(self, **requirements):
+        """Install one immutable prediction request and its training hull.
+
+        Parameters
+        ----------
+        **requirements
+            Cobaya requests containing serialized ``forestflow_p1d`` grids.
+
+        Returns
+        -------
+        dict
+            Required immutable Lya cosmology redshifts.
+
+        Raises
+        ------
+        ValueError
+            If requests conflict, lack a P1D contract, or training-domain
+            labels do not match the bundle.
+        """
         super().must_provide(**requirements)
         if "forestflow_p1d" in requirements:
             request = PredictionRequest.from_dict(requirements["forestflow_p1d"])
@@ -91,9 +138,37 @@ class ForestFlowTheory(Theory):
         return {"lya_cosmology": {"redshifts": list(self.request.redshifts)}}
 
     def initialize_with_provider(self, provider):
+        """Store the Cobaya provider supplying immutable cosmology snapshots.
+
+        Parameters
+        ----------
+        provider : cobaya.theory.Provider
+            Provider from which ``lya_cosmology`` is retrieved per point.
+        """
         self.provider = provider
 
     def calculate(self, state, want_derived=True, **params_values):
+        """Evaluate deterministic Arinyo parameters and raw ForestFlow P1D.
+
+        Parameters
+        ----------
+        state : dict
+            Cobaya state updated with immutable ``forestflow_p1d`` and
+            ``forestflow_arinyo`` products.
+        want_derived : bool, default=True
+            Accepted Cobaya flag; this component exports no derived values.
+        **params_values
+            Physical cosmology and public IGM coefficient values.
+
+        Notes
+        -----
+        Inputs are admitted against explicit cosmology bounds, redshift
+        coverage, physical IGM constraints, and optionally the native hull.
+        A stable latent block zero is used at every redshift, so output is
+        invariant to request ordering and batching. Domain failures produce a
+        valid immutable rejection product instead of invoking a second CAMB
+        calculation.
+        """
         from forestflow.model.arinyo import ArinyoModel
         from forestflow.model.linear import LinearTheoryGrid
         from lya_interface.projection import project_request

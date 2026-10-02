@@ -1,0 +1,868 @@
+{
+  "repository": "lya_interface",
+  "revision": "3a53a8c383da3e33bf0d26eaa2cd54b6ce9b0aca",
+  "functions": [
+    {
+      "id": "lya_interface-0001",
+      "file": "src/lya_interface/adapters/cup1d_backend.py",
+      "qualified_name": "_serializable",
+      "line": 16,
+      "signature": "_serializable(value)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `value`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed recursive NumPy-to-JSON conversion.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0002",
+      "file": "src/lya_interface/adapters/cup1d_backend.py",
+      "qualified_name": "native_configuration",
+      "line": 26,
+      "signature": "native_configuration(path)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `path`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed native YAML loading, prior rejection, and coefficient ownership partition.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0003",
+      "file": "src/lya_interface/adapters/cup1d_backend.py",
+      "qualified_name": "registry_for",
+      "line": 36,
+      "signature": "registry_for(args, definitions, igm, nuisance)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `args`, `definitions`, `igm`, `nuisance`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed metadata construction and registry delegation.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0004",
+      "file": "src/lya_interface/adapters/cup1d_backend.py",
+      "qualified_name": "make_igm",
+      "line": 47,
+      "signature": "make_igm(path, definitions)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `path`, `definitions`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed native IGM construction and registry return.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0005",
+      "file": "src/lya_interface/adapters/cup1d_backend.py",
+      "qualified_name": "native_blinding",
+      "line": 53,
+      "signature": "native_blinding(path)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `path`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Verified native diagnostic-blinding contract and static-data-only behavior.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0006",
+      "file": "src/lya_interface/adapters/cup1d_backend.py",
+      "qualified_name": "make_backend",
+      "line": 70,
+      "signature": "make_backend(path, definitions, covariance_asset=None, fiducial_M=None, include_logdet=False, blinding_policy='reject')",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `path`, `definitions`, `covariance_asset`, `fiducial_M`, `include_logdet`, `blinding_policy`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `FileNotFoundError`, `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed static data/covariance construction, frozen conversions, asset policy, identity, and failures.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0007",
+      "file": "src/lya_interface/adapters/vectorized_backend.py",
+      "qualified_name": "VectorizedP1DLikelihood.apply_observation_model",
+      "line": 17,
+      "signature": "apply_observation_model(self, p1d_lya_kms, context, nuisance_parameters)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `p1d_lya_kms`, `context`, `nuisance_parameters`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed singleton columnar response path, row validation, rebinning, and native fallback.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0008",
+      "file": "src/lya_interface/configuration.py",
+      "qualified_name": "load_configuration",
+      "line": 7,
+      "signature": "load_configuration(path)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed recursive inheritance, likelihood addition conflict, registry consistency, and relative asset resolution.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0009",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "readonly",
+      "line": 10,
+      "signature": "readonly(array)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed immutable bytes-backed float64 array conversion.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0010",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.__post_init__",
+      "line": 54,
+      "signature": "__post_init__(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed immutable array freezing, grid/background validation, spline construction, and point identity.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0011",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot._index",
+      "line": 75,
+      "signature": "_index(self, z)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `z`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `NumericalCoverageError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed exact requested-redshift lookup and coverage failure.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0012",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.validate_k",
+      "line": 81,
+      "signature": "validate_k(self, k)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `k`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Review explicit raises `NumericalCoverageError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed linear-grid coverage validation and numerical error contract.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0013",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.compute_linP_Mpc",
+      "line": 87,
+      "signature": "compute_linP_Mpc(self, z, k_Mpc, species='bc')",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `z`, `k_Mpc`, `species`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed bc-only interpolation, units, and coverage/species failures.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0014",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot._background",
+      "line": 94,
+      "signature": "_background(self, z, values)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `z`, `values`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed exact redshift gathering and shape preservation.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0015",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.compute_hubble_parameter",
+      "line": 98,
+      "signature": "compute_hubble_parameter(self, z)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `z`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed stored Hubble lookup and units.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0016",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.compute_growth_rate",
+      "line": 102,
+      "signature": "compute_growth_rate(self, z)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `z`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed stored growth lookup.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0017",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.get_kmax_linP_Mpc",
+      "line": 106,
+      "signature": "get_kmax_linP_Mpc(self)",
+      "detected_gaps": [
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed maximum stored k return.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0018",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.get_mnu",
+      "line": 110,
+      "signature": "get_mnu(self)",
+      "detected_gaps": [
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed neutrino-mass accessor and units.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0019",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot.get_primordial_params",
+      "line": 114,
+      "signature": "get_primordial_params(self)",
+      "detected_gaps": [
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed copied primordial mapping return.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0020",
+      "file": "src/lya_interface/derived.py",
+      "qualified_name": "star_parameters",
+      "line": 5,
+      "signature": "star_parameters(snapshot, z_star=3.0, k_star_ikms=0.009)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed bc star summary definition, pivots, aliases, and finite-window interpretation.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0021",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "cup1d_component",
+      "line": 8,
+      "signature": "cup1d_component(model)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `model`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed unique P1D-likelihood selection and ambiguity failure.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0022",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "evaluate_point",
+      "line": 22,
+      "signature": "evaluate_point(model, point)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Verified physical-point evaluation, posterior/domain validation, native backend use, and no duplicate cosmology construction.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0023",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "plot_point",
+      "line": 68,
+      "signature": "plot_point(model, point, *, residuals=False, title=None)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `model`, `point`, `residuals`, `title`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed native plot renderer selection, marginal errors, and correlated joint diagnostic title.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0024",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "minimize_point",
+      "line": 123,
+      "signature": "minimize_point(model, initial_point, max_evals=10000, xtol=0.0001, ftol=1e-06, verbose=True, report_every=100)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Verified bounded Nelder--Mead objective, total-likelihood treatment, verbose diagnostics, and no-disk side effects.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0025",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "minimize_point.<locals>.physical",
+      "line": 201,
+      "signature": "physical(x)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `x`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed nested unit-cube to physical-point conversion.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0026",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "minimize_point.<locals>.objective",
+      "line": 215,
+      "signature": "objective(x, count=True)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `x`, `count`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed nested invalid-point objective, best-valid retention, and reporting.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0027",
+      "file": "src/lya_interface/interface.py",
+      "qualified_name": "IGMHubCobaya.__init__",
+      "line": 8,
+      "signature": "__init__(self, config_file)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `config_file`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed configuration loading and Cobaya model construction.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0028",
+      "file": "src/lya_interface/interface.py",
+      "qualified_name": "IGMHubCobaya.loglike",
+      "line": 12,
+      "signature": "loglike(self, **sampled_parameters)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `sampled_parameters`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed likelihood-only sum and public sampled-parameter forwarding.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0029",
+      "file": "src/lya_interface/interface.py",
+      "qualified_name": "IGMHubCobaya.close",
+      "line": 15,
+      "signature": "close(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed underlying Cobaya resource cleanup.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0030",
+      "file": "src/lya_interface/likelihoods/cup1d.py",
+      "qualified_name": "Cup1DLikelihood.initialize",
+      "line": 22,
+      "signature": "initialize(self)",
+      "detected_gaps": [
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed backend/registry construction and missing-native-config validation.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0031",
+      "file": "src/lya_interface/likelihoods/cup1d.py",
+      "qualified_name": "Cup1DLikelihood.get_can_support_params",
+      "line": 32,
+      "signature": "get_can_support_params(self)",
+      "detected_gaps": [
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed stable nuisance-name mapping return.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0032",
+      "file": "src/lya_interface/likelihoods/cup1d.py",
+      "qualified_name": "Cup1DLikelihood.get_requirements",
+      "line": 36,
+      "signature": "get_requirements(self)",
+      "detected_gaps": [
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed serialized ForestFlow request and native-blinding requirement branches.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0033",
+      "file": "src/lya_interface/likelihoods/cup1d.py",
+      "qualified_name": "Cup1DLikelihood.initialize_with_provider",
+      "line": 43,
+      "signature": "initialize_with_provider(self, provider)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `provider`. Existing prose may describe these, but there are no matching canonical entries."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed Cobaya provider storage and documented its required result role.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0034",
+      "file": "src/lya_interface/likelihoods/cup1d.py",
+      "qualified_name": "Cup1DLikelihood.logp",
+      "line": 47,
+      "signature": "logp(self, _derived=None, **params_values)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `_derived`, `params_values`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Verified existing data-only likelihood documentation against nuisance routing, prior exclusion, invalid prediction, and logdet behavior.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0035",
+      "file": "src/lya_interface/parameters.py",
+      "qualified_name": "ParameterRegistry.__init__",
+      "line": 36,
+      "signature": "__init__(self, definitions, igm_names, nuisance_names, backend_metadata=None)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `definitions`, `igm_names`, `nuisance_names`, `backend_metadata`.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed registry ownership, aliasing, sampled/fixed/derived classification, and transformation validation.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0036",
+      "file": "src/lya_interface/parameters.py",
+      "qualified_name": "ParameterRegistry.mapping",
+      "line": 70,
+      "signature": "mapping(self, owner)",
+      "detected_gaps": [
+        "Provide canonical `Parameters` entries for `owner`. Existing prose may describe these, but there are no matching canonical entries.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed owner-filtered public/backend mapping.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0037",
+      "file": "src/lya_interface/parameters.py",
+      "qualified_name": "route",
+      "line": 75,
+      "signature": "route(values, mapping)",
+      "detected_gaps": [
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed exact mapping match, finite conversion, and routing failure.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0038",
+      "file": "src/lya_interface/projection.py",
+      "qualified_name": "project_request",
+      "line": 10,
+      "signature": "project_request(request, snapshot, model, linear, arinyo, integrator, kmax_iMpc)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed ragged request coalescing, velocity/Mpc conversion, projection, padding removal, immutable output, and errors.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0039",
+      "file": "src/lya_interface/provenance.py",
+      "qualified_name": "file_identity",
+      "line": 10,
+      "signature": "file_identity(path)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed streaming file digest and identity fields.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0040",
+      "file": "src/lya_interface/provenance.py",
+      "qualified_name": "collect",
+      "line": 31,
+      "signature": "collect(info, model=None)",
+      "detected_gaps": [],
+      "status": "verified_unchanged",
+      "evidence": "Reviewed dependency revisions, asset fingerprinting, BAO/native product provenance, registries, and bundle metadata.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0041",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.initialize",
+      "line": 25,
+      "signature": "initialize(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed emulator/IGM/integrator initialization and bundle/domain validation.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0042",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.get_can_support_params",
+      "line": 64,
+      "signature": "get_can_support_params(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed public IGM parameter declaration.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0043",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.get_can_provide",
+      "line": 67,
+      "signature": "get_can_provide(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed raw-P1D/Arinyo product declaration.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0044",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.get_requirements",
+      "line": 70,
+      "signature": "get_requirements(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed explicit cosmology-domain requirements.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0045",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.must_provide",
+      "line": 74,
+      "signature": "must_provide(self, **requirements)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `requirements`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed immutable request installation, hull construction, dependent redshift request, and conflicts.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0046",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.initialize_with_provider",
+      "line": 93,
+      "signature": "initialize_with_provider(self, provider)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `provider`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed provider snapshot ownership.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0047",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory.calculate",
+      "line": 96,
+      "signature": "calculate(self, state, want_derived=True, **params_values)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `state`, `want_derived`, `params_values`.",
+        "Review explicit raises `ModelDomainError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed physical/domain admission, deterministic latent selection, projection, immutable products, and rejection result.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0048",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.initialize",
+      "line": 16,
+      "signature": "initialize(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed snapshot setting validation and state initialization.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0049",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.get_can_provide",
+      "line": 24,
+      "signature": "get_can_provide(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed declared immutable products.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0050",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.get_can_provide_params",
+      "line": 27,
+      "signature": "get_can_provide_params(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed public star-parameter declaration.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0051",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.must_provide",
+      "line": 30,
+      "signature": "must_provide(self, **requirements)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `requirements`.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant.",
+        "Review explicit raises `ValueError`; document caller-relevant exceptions and triggering conditions in `Raises`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed redshift/blinding requirement merging and CAMB provider contract.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0052",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.get_requirements",
+      "line": 47,
+      "signature": "get_requirements(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed primordial/neutrino requirements.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0053",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.initialize_with_provider",
+      "line": 50,
+      "signature": "initialize_with_provider(self, provider)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `provider`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed Cobaya provider ownership.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0054",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.calculate",
+      "line": 53,
+      "signature": "calculate(self, state, want_derived=True, **params_values_dict)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Provide canonical `Parameters` entries for `state`, `want_derived`, `params_values_dict`."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed immutable snapshot construction and diagnostic-only blinding.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-0055",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology.get_lya_cosmology",
+      "line": 72,
+      "signature": "get_lya_cosmology(self)",
+      "detected_gaps": [
+        "No docstring: write an implementation-specific summary and the applicable NumPy sections.",
+        "Add a `Returns` contract covering actual return branches, type/structure, shapes and units where relevant."
+      ],
+      "status": "corrected",
+      "evidence": "Reviewed current snapshot product accessor.",
+      "blocker": ""
+    }
+  ],
+  "classes": [
+    {
+      "id": "lya_interface-class-001",
+      "file": "src/lya_interface/adapters/vectorized_backend.py",
+      "qualified_name": "VectorizedP1DLikelihood",
+      "line": 7,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-002",
+      "file": "src/lya_interface/contracts.py",
+      "qualified_name": "ModelDomainError",
+      "line": 5,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-003",
+      "file": "src/lya_interface/contracts.py",
+      "qualified_name": "NumericalCoverageError",
+      "line": 9,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-004",
+      "file": "src/lya_interface/cosmology.py",
+      "qualified_name": "CobayaCosmologySnapshot",
+      "line": 29,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-005",
+      "file": "src/lya_interface/diagnostics.py",
+      "qualified_name": "PointFit",
+      "line": 114,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-006",
+      "file": "src/lya_interface/interface.py",
+      "qualified_name": "IGMHubCobaya",
+      "line": 7,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-007",
+      "file": "src/lya_interface/likelihoods/cup1d.py",
+      "qualified_name": "Cup1DLikelihood",
+      "line": 8,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-008",
+      "file": "src/lya_interface/parameters.py",
+      "qualified_name": "Parameter",
+      "line": 9,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-009",
+      "file": "src/lya_interface/parameters.py",
+      "qualified_name": "ParameterRegistry",
+      "line": 24,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-010",
+      "file": "src/lya_interface/theory/forestflow.py",
+      "qualified_name": "ForestFlowTheory",
+      "line": 10,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    },
+    {
+      "id": "lya_interface-class-011",
+      "file": "src/lya_interface/theory/lya_cosmology.py",
+      "qualified_name": "LyaCosmology",
+      "line": 8,
+      "status": "corrected",
+      "evidence": "Reviewed the class contract and documented its public responsibility, state, and domain-specific semantics.",
+      "blocker": ""
+    }
+  ],
+  "validation": [],
+  "progress_note": "Completed the interface class-contract review; continuing function-level documentation in sibling repositories."
+}

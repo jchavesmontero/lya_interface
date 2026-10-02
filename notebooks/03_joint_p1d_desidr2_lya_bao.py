@@ -177,7 +177,7 @@ plt.show()
 # or fit files are written, and the fitted point stays internal for blinding.
 
 # %%
-RUN_MINIMIZATION = True
+RUN_MINIMIZATION = False
 best_fit_point = None
 if RUN_MINIMIZATION:
     fit = minimize_point(model, initial_point, max_evals=500, verbose=True, report_every=100)

@@ -52,6 +52,14 @@ class CobayaCosmologySnapshot(BaseCosmology):
     identity: str = field(init=False)
 
     def __post_init__(self):
+        """Freeze provider arrays, validate coverage, and build splines.
+
+        Raises
+        ------
+        ValueError
+            If redshift, linear-power, background, or growth arrays have
+            incompatible shapes or non-finite/non-positive values.
+        """
         object.__setattr__(self, "redshifts", tuple(float(z) for z in self.redshifts))
         for name in ("k_iMpc", "power_Mpc3", "hubble", "growth"):
             object.__setattr__(self, name, readonly(getattr(self, name)))
@@ -73,34 +81,88 @@ class CobayaCosmologySnapshot(BaseCosmology):
         object.__setattr__(self, "identity", digest.hexdigest())
 
     def _index(self, z):
+        """Return the exact requested-redshift index.
+
+        Raises
+        ------
+        NumericalCoverageError
+            If Cobaya did not request the supplied redshift.
+        """
         try:
             return self.redshifts.index(float(z))
         except ValueError as error:
             raise NumericalCoverageError(f"redshift {z} was not requested from CAMB") from error
 
     def validate_k(self, k):
-        """Raise if wavenumbers lie outside the stored linear-power grid."""
+        """Validate wavenumbers against stored 1/Mpc linear-power coverage.
+
+        Parameters
+        ----------
+        k : array-like
+            Comoving wavenumbers in 1/Mpc.
+
+        Raises
+        ------
+        NumericalCoverageError
+            If any value is non-finite or outside the stored closed interval.
+        """
         k = np.asarray(k)
         if np.any(~np.isfinite(k)) or np.any(k < self.k_iMpc[0]) or np.any(k > self.k_iMpc[-1]):
             raise NumericalCoverageError(f"k lies outside snapshot [{self.k_iMpc[0]}, {self.k_iMpc[-1]}] /Mpc; increase configured provider range")
 
     def compute_linP_Mpc(self, z, k_Mpc, species="bc"):
-        """Interpolate the linear baryon-plus-CDM power in Mpc units."""
+        """Interpolate stored baryon-plus-CDM linear power in Mpc cubed.
+
+        Parameters
+        ----------
+        z : float
+            One exact provider redshift.
+        k_Mpc : array-like
+            In-range wavenumbers in 1/Mpc.
+        species : {'bc'}, default='bc'
+            Snapshot contains only Cobaya's ``delta_nonu`` (bc) spectrum.
+
+        Returns
+        -------
+        ndarray
+            Interpolated linear power in Mpc cubed.
+
+        Raises
+        ------
+        ValueError
+            If total-matter species is requested.
+        NumericalCoverageError
+            If redshift or wavenumbers were not supplied by Cobaya.
+        """
         if species != "bc":
             raise ValueError("snapshot contains linear delta_nonu (bc), not total matter")
         self.validate_k(k_Mpc)
         return np.exp(self._splines[self._index(z)](np.log(k_Mpc)))
 
     def _background(self, z, values):
+        """Gather exact-redshift background values with input shape preserved.
+
+        Parameters
+        ----------
+        z : float or array-like
+            Requested snapshot redshifts.
+        values : ndarray
+            One stored value per snapshot redshift.
+
+        Returns
+        -------
+        ndarray
+            Values reshaped like ``z``.
+        """
         zs = np.asarray(z)
         return np.asarray([values[self._index(v)] for v in zs.flat]).reshape(zs.shape)
 
     def compute_hubble_parameter(self, z):
-        """Return the stored Hubble rate at requested snapshot redshifts."""
+        """Return stored Hubble rate in km/s/Mpc at exact snapshot redshifts."""
         return self._background(z, self.hubble)
 
     def compute_growth_rate(self, z):
-        """Return the stored linear growth rate at requested redshifts."""
+        """Return stored logarithmic linear growth rate at exact redshifts."""
         return self._background(z, self.growth)
 
     def get_kmax_linP_Mpc(self):

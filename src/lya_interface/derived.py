@@ -17,7 +17,11 @@ def star_parameters(snapshot, z_star=3., k_star_ikms=.009):
     Returns
     -------
     dict
-        ``Delta2star``, ``nstar`` and ``alphastar`` in public naming.
+        Public linear ``bc`` power summaries at ``(z_star, k_star_ikms)``:
+        ``Delta2star`` is ``k**3 P(k)/(2*pi**2)``, ``nstar`` is the local
+        logarithmic slope, and ``alphastar`` is the running returned by
+        LaCE's finite-window quadratic log-power fit. These are not literal
+        point derivatives.
     """
     native = snapshot.get_linP_kms_params(z_star, k_star_ikms)
     return {public: native[backend] for public, backend in DERIVED_ALIASES.items()}

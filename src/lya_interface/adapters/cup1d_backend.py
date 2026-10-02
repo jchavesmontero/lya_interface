@@ -14,6 +14,18 @@ from cup1d.likelihood.external import fingerprint
 
 
 def _serializable(value):
+    """Convert NumPy containers recursively to fingerprintable Python values.
+
+    Parameters
+    ----------
+    value : object
+        Mapping, NumPy scalar/array, or already JSON-compatible value.
+
+    Returns
+    -------
+    object
+        Recursively serializable equivalent.
+    """
     if isinstance(value, dict):
         return {k: _serializable(v) for k, v in value.items()}
     if isinstance(value, np.ndarray):
@@ -24,6 +36,24 @@ def _serializable(value):
 
 
 def native_configuration(path):
+    """Load native cup1d settings and partition public coefficient ownership.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Native cup1d YAML configuration.
+
+    Returns
+    -------
+    args, igm, nuisance : tuple
+        Resolved Args plus ordered native IGM and nuisance coefficient names.
+
+    Raises
+    ------
+    ValueError
+        If native statistical priors would be silently duplicated outside
+        Cobaya.
+    """
     args = Args.from_yaml(str(Path(path).resolve()), verbose=False)
     if args.use_star_priors or getattr(args, "prior_Gauss_rms", None) is not None or getattr(args, "Gauss_priors", None) or args.fid_igm.get("Gauss_priors") or args.fid_cont.get("Gauss_priors") or args.fid_syst.get("Gauss_priors"):
         raise ValueError("export native statistical priors explicitly to Cobaya; implicit native priors are unsupported")
@@ -34,6 +64,13 @@ def native_configuration(path):
 
 
 def registry_for(args, definitions, igm, nuisance):
+    """Build an explicit public-to-native ownership registry.
+
+    Returns
+    -------
+    ParameterRegistry
+        Registry with coefficient history metadata for IGM and nuisances.
+    """
     metadata = {}
     for name in igm + nuisance:
         family = name.rsplit("_", 1)[0]
@@ -45,6 +82,13 @@ def registry_for(args, definitions, igm, nuisance):
 
 
 def make_igm(path, definitions):
+    """Construct native cup1d IGM histories and their public registry.
+
+    Returns
+    -------
+    IGM, ParameterRegistry
+        Static IGM model and ownership registry.
+    """
     args, igm, nuisance = native_configuration(path)
     registry = registry_for(args, definitions, igm, nuisance)
     return IGM(free_param_names=igm, pars_igm=args.fid_igm), registry
@@ -69,6 +113,35 @@ def native_blinding(path):
 
 def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
                  include_logdet=False, blinding_policy="reject"):
+    """Construct static vectorized cup1d observation/covariance backend.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Native cup1d YAML configuration.
+    definitions : mapping
+        Explicit Cobaya public parameter definitions.
+    covariance_asset : str or pathlib.Path, optional
+        ForestFlow relative emulator-covariance product.
+    fiducial_M : mapping
+        Frozen ``H(z)/(1+z)`` values in km/s/Mpc for every data redshift.
+    include_logdet : bool, default=False
+        Include fixed covariance normalization in likelihood values.
+    blinding_policy : {'reject', 'native'}, default='reject'
+        Whether static native diagnostic blinding is allowed.
+
+    Returns
+    -------
+    VectorizedP1DLikelihood, ParameterRegistry
+        Static observation backend and public ownership registry.
+
+    Raises
+    ------
+    ValueError
+        If static data, blinding, conversions, or covariance policy is invalid.
+    FileNotFoundError
+        If calibrated emulator error is required but no asset is supplied.
+    """
     args, igm, nuisance = native_configuration(path)
     registry = registry_for(args, definitions, igm, nuisance)
     if any(is_synthetic_data_label(n) for n in args.data_label):

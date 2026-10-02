@@ -199,9 +199,12 @@ display({
 })
 
 # %%
-# %%time
+import time
+
+start = time.perf_counter()
 for ii in range(10):
     point_result, _ = evaluate_point(model, parameter_values)
+print(f"10 likelihood evaluations: {time.perf_counter() - start:.3f} s")
 
 # %% [markdown]
 # ## Plot data and the initial model at every redshift
@@ -233,11 +236,11 @@ print("Provenance sections:", list(provenance))
 # Set the flag to `True` when you want to fit. This varies **all** sampled baseline parameters, minimizing the data likelihood within the native bounds. It uses derivative-free Nelder-Mead in scaled coordinates, with an explicit initial simplex and adaptive coefficients. It can take longer than the initial evaluation; increase the budget if necessary. No chains or fit files are written. Convergence of one bounded start is not a global-optimum guarantee.
 
 # %%
-RUN_MINIMIZATION = True
-# best_fit_point = initial_point
+RUN_MINIMIZATION = False
+best_fit_point = None
 if RUN_MINIMIZATION:
     fit = minimize_point(
-        model, best_fit_point, max_evals=10000, verbose=True, report_every=10
+        model, initial_point, max_evals=10000, verbose=True, report_every=100
     )
     display(
         {
@@ -248,6 +251,7 @@ if RUN_MINIMIZATION:
             "minus2_loglike_total": fit.minus2_loglike_total,
         }
     )
+    best_fit_point = fit.point
     if not fit.success:
         raise RuntimeError(
             "Minimization did not converge; do not label its output a best fit."

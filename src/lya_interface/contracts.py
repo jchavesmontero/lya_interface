@@ -3,8 +3,18 @@ from cup1d.likelihood.external import PredictionRequest, PredictionContext, Pred
 
 
 class ModelDomainError(ValueError):
-    """A scientifically unsupported sampled point, suitable for rejection."""
+    """Signal that a sampled point lies outside the admitted physical model domain.
+
+    Likelihood code may convert this exception into a rejected point because
+    the requested prediction is scientifically unsupported rather than a
+    numerical-coverage failure.
+    """
 
 
 class NumericalCoverageError(ValueError):
-    """Configured numerical range is insufficient; never silently reject."""
+    """Signal insufficient configured numerical coverage for a valid point.
+
+    Unlike :class:`ModelDomainError`, this exception identifies a configuration
+    error (for example an inadequate linear-power range) and must not be
+    silently converted into a likelihood rejection.
+    """
