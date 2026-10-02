@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lya-interface"
+version = "0.1.0"
+description = "Cobaya provider-based ForestFlow/cup1d full P1D likelihood"
+requires-python = ">=3.12"
+dependencies = ["cobaya>=3.6.2,<4", "numpy", "scipy", "PyYAML"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+markers = ["scientific: requires maintained sibling packages and scientific assets"]

@@ -1,11 +1,12 @@
 from lya_interface.interface import Interface
 
-interface = Interface("interface.yaml")
+interface = Interface("examples/cup1d_evaluate.yaml")
 
-chi2 = interface.loglike(
-    As=2.1e-9,
-    ns=0.965,
-    cup1d_parameter=1.0,
-    cupix_parameter=0.5,
-    vega_parameter=0.2,
+loglike = interface.loglike(
+    As=2.105209331337507e-9,
+    ns=0.9665,
+    igm_tau_eff_0=0.0,
+    p1d_f_Lya_SiIII_0=-4.0,
 )
+print(loglike)
+interface.close()

@@ -1,0 +1,102 @@
+# Run from the lya_interface repository. Demonstration priors only.
+params: &definitions
+  H0: 67.66
+  ombh2: 0.02242
+  omch2: 0.11933
+  mnu: 0.0
+  nnu: 3.046
+  omk: 0.0
+  tau: 0.054
+  nrun: 0.0
+  As:
+    prior: {min: 1.9e-9, max: 2.3e-9}
+    ref: 2.105209331337507e-9
+    proposal: 2.0e-11
+  ns:
+    prior: {min: 0.95, max: 0.98}
+    ref: 0.9665
+    proposal: 0.001
+  igm_tau_eff_0:
+    prior: {min: -0.03, max: 0.03}
+    ref: 0.0
+    proposal: 0.002
+  igm_sigT_kms_0: 1.0
+  igm_gamma_0: 1.0
+  igm_kF_kms_0: 1.0
+  p1d_f_Lya_SiIII_0:
+    prior: {min: -4.2, max: -3.8}
+    ref: -4.0
+    proposal: 0.02
+  p1d_HCD_damp1_0: -1.4
+  Delta2star: {derived: true}
+  nstar: {derived: true}
+  alphastar: {derived: true}
+theory:
+  camb:
+    extra_args:
+      WantCls: false
+      Want_CMB: false
+      nonlinear: false
+      neutrino_hierarchy: degenerate
+      num_massive_neutrinos: 0
+      pivot_scalar: 0.05
+      pivot_tensor: 0.05
+  lya_interface.theory.lya_cosmology.LyaCosmology:
+    stop_at_error: true
+    kmax_iMpc: 200.0
+    snapshot_nodes: 4096
+    z_star: 3.0
+    k_star_ikms: 0.009
+  lya_interface.theory.forestflow.ForestFlowTheory:
+    stop_at_error: true
+    native_config: examples/native_demo.yaml
+    parameter_definitions: *definitions
+    model_key: forest_mpg_fix
+    realizations: 1000
+    seed: 0
+    hull_factor: 1.0
+    cosmology_domain:
+      H0: [65.0, 70.0]
+      ombh2: [0.02242, 0.02242]
+      omch2: [0.11933, 0.11933]
+      mnu: [0.0, 0.0]
+      nnu: [3.046, 3.046]
+      omk: [0.0, 0.0]
+      nrun: [0.0, 0.0]
+    projection:
+      k_perp_min_iMpc: 0.001
+      k_perp_max_iMpc: 100.0
+      n_k_perp: 96
+      method: simpson
+likelihood:
+  lya_interface.likelihoods.cup1d.Cup1DLikelihood:
+    stop_at_error: true
+    native_config: examples/native_demo.yaml
+    parameter_definitions: *definitions
+    covariance_asset: null  # disabled explicitly in native_demo; not latent scatter
+    include_logdet: false
+    # Frozen native Planck18 M(z), km/s/Mpc; used only for error covariance.
+    fiducial_M:
+      2.2: 69.6338462642617
+      2.4: 71.3980936237748
+      2.6: 73.15903561399239
+      2.8: 74.90909995247455
+      3.0: 76.64326102808273
+      3.2: 78.35824126355129
+      3.4: 80.05197318573427
+      3.6: 81.72323229329216
+      3.8: 83.37138351608837
+      4.0: 84.99620428195092
+      4.2: 86.59775991679038
+output: output/demo_mle
+sampler:
+  minimize:
+    ignore_prior: true
+    method: scipy
+    max_evals: 200
+    best_of: 1
+    override_scipy:
+      method: Powell
+      options:
+        xtol: 0.0001
+        ftol: 0.000001

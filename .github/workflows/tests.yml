@@ -1,0 +1,70 @@
+name: interface validation
+on:
+  workflow_dispatch:
+    inputs:
+      cup1d_ref:
+        description: 'Commit SHA containing the upstream external-P1D API (required prerequisite PR)'
+        required: true
+      scientific:
+        description: 'Run on an asset-provisioned lya-assets self-hosted runner'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+env:
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: lya_interface
+      - uses: actions/checkout@v4
+        with:
+          repository: igmhub/cup1d
+          ref: ${{ inputs.cup1d_ref }}
+          path: cup1d
+      - uses: actions/checkout@v4
+        with:
+          repository: igmhub/LaCE
+          ref: 1f0cc5e91d839088ba801e258129277bd006cda5
+          path: LaCE
+      - uses: actions/checkout@v4
+        with:
+          repository: igmhub/ForestFlow
+          ref: 2f604bade597c38e7eaece7012f0bfca459f0ae8
+          path: ForestFlow
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev
+      - run: python -m pip install -e ./LaCE -e ./ForestFlow -e ./cup1d -e './lya_interface[test]'
+      - run: pytest -q -m 'not scientific'
+        working-directory: lya_interface
+  scientific:
+    if: inputs.scientific
+    runs-on: [self-hosted, lya-assets]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: lya_interface
+      # The runner owns compatible installed sibling checkouts and scientific
+      # asset caches. Do not download archives, retrain, or fabricate fixtures.
+      - name: Verify pinned sibling revisions and prerequisite
+        env:
+          CUP1D_REF: ${{ inputs.cup1d_ref }}
+        run: |
+          python lya_interface/scripts/check_dependency_revisions.py --cup1d "$CUP1D_REF"
+      - run: python -m pip install --no-deps -e './lya_interface[test]'
+      - run: pytest -q -m scientific -s
+        working-directory: lya_interface
+        env:
+          LYA_REQUIRE_SCIENTIFIC_ASSETS: '1'
+      - run: python examples/evaluate_point.py --provenance evaluate.provenance.json
+        working-directory: lya_interface
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scientific-provenance
+          path: lya_interface/evaluate.provenance.json
