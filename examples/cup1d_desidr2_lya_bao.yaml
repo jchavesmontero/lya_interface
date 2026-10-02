@@ -1,0 +1,8 @@
+# Optional combined check. Load with load_configuration/evaluate_point.py.
+# Retains the CM2026 P1D settings and shares its one CAMB provider.
+interface_base: cup1d_evaluate.yaml
+additional_likelihoods:
+  bao.desi_dr2.desi_bao_lya: null
+# Both data terms are multiplied as an independence approximation for this check;
+# no measured joint P1D/BAO cross-covariance is included.
+# CM2026 fixes the background: BAO adds a constant until it is allowed to vary.

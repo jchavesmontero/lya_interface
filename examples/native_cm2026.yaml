@@ -1,0 +1,3 @@
+# Inherit cup1d's CM2026 baseline without changing any scientific setting.
+# Args.from_yaml resolves the maintained CM2026 defaults for sparse overrides.
+emulator_label: forest_mpg

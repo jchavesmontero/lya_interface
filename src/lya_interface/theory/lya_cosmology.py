@@ -18,15 +18,25 @@ class LyaCosmology(Theory):
             raise ValueError("invalid snapshot range/resolution")
         self._zs = set(float(z) for z in self.redshifts) | {float(self.z_star)}
         self.calls = 0
+        self._blinding_config = None
+        self._blind = {}
 
     def get_can_provide(self):
-        return ["lya_cosmology"]
+        return ["lya_cosmology", "lya_blinding"]
 
     def get_can_provide_params(self):
         return list(DERIVED_ALIASES)
 
     def must_provide(self, **requirements):
         super().must_provide(**requirements)
+        if "lya_blinding" in requirements:
+            from lya_interface.adapters.cup1d_backend import native_blinding
+            path = requirements["lya_blinding"]["native_config"]
+            if self._blinding_config is not None and self._blinding_config != path:
+                raise ValueError("conflicting native diagnostic blinding configurations")
+            if self._blinding_config is None:
+                self._blind = native_blinding(path)
+                self._blinding_config = path
         if "lya_cosmology" in requirements:
             self._zs.update(requirements["lya_cosmology"].get("redshifts", []))
         zs = sorted(self._zs)
@@ -51,7 +61,12 @@ class LyaCosmology(Theory):
             primordial=tuple((name, float(params_values_dict[name])) for name in ("As", "ns", "nrun")),
             mnu=float(params_values_dict["mnu"]))
         state["lya_cosmology"] = snapshot
-        state["derived"] = star_parameters(snapshot, self.z_star, self.k_star_ikms) if want_derived else {}
+        stars = star_parameters(snapshot, self.z_star, self.k_star_ikms) if want_derived else {}
+        # As in native cup1d, blinding affects exported diagnostics only.
+        # Keep the snapshot and every scientific prediction unshifted.
+        state["derived"] = {name: value + self._blind.get(DERIVED_ALIASES[name], 0.)
+                            for name, value in stars.items()}
+        state["lya_blinding"] = self._blinding_config
         self.calls += 1
 
     def get_lya_cosmology(self):

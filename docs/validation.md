@@ -1,5 +1,26 @@
 # Validation record and limitations
 
+## Vectorized CM2026/DR1 execution
+
+The interface now performs one native P1D array projection for all unique
+redshift/grid requests, with endpoint padding for ragged grids, and selects
+cup1d's columnar contaminant/resolution/rebinning kernels for scalar Cobaya
+points. Parameter ordering, latent indices, projection quadrature, covariance,
+blinding and CM2026 data selection are unchanged. The temporarily disabled
+training hull remains a separate explicitly requested configuration change.
+
+The 24 fast checks include scalar/array projection comparisons for unequal
+axis lengths, both quadratures, reordered redshifts, duplicate requests,
+immutable output and coverage rejection. All 12 real-asset scientific
+regressions and both covariance-enabled CM2026 checks passed after these
+execution-path changes. The CM2026 test also compares columnar observation
+and rebinning directly against the native scalar backend.
+
+No end-to-end performance factor is claimed without a timing measurement.
+Cobaya/Nelder–Mead evaluates one parameter point per call; batch kernels do
+not make the optimizer evaluate its simplex points concurrently. Upstream
+linear interpolation and small ragged-grid packing loops remain.
+
 Validated locally on 2026-10-02 with Python 3.12, Cobaya 3.6.2, CAMB 2.0.0,
 NumPy 2.5.1, SciPy 1.18.0, Torch 2.13.0 and pytest 9.1.1. Siblings were installed
 editably from the current checkouts without downloading/upgrading dependencies.
@@ -16,13 +37,27 @@ Validation chains/minimizer/provenance outputs were written under `/tmp`.
 
 ## Commands actually exercised
 
-- `pytest -q -m 'not scientific'`: 10 lightweight tests passed, including actual
+- Final combined `pytest -q` with `LYA_BAO_PACKAGES_PATH` set: 36 passed, with 14 upstream Torch deprecation
+  warnings and no skips. This includes verification of the missing CM2026
+  covariance error, not an end-to-end covariance-enabled CM2026 fit.
+
+- `pytest -q -m 'not scientific'`: 20 lightweight tests passed, including actual
   Cobaya dependency graph, nuisance/IGM/cosmology invalidation, cached restoration,
   derived-only calculation without weights, and numerical-error propagation.
-- `pytest -q -m scientific -s`: 12 real-asset tests passed: CAMB/LaCE matching,
+  Two of these validate tracked Jupytext Python sources, notebook structure,
+  code syntax, clean outputs and cell round-trip fidelity without local .ipynb files.
+  Recreating both notebooks with `jupytext --sync` from a temporary copy containing
+  only their .py sources and the pairing configuration also passed.
+- The original small-demo tutorial notebooks were schema-validated with nbformat and their code
+  cells executed in order through IPython against the real demo assets. Plot
+  code ran with the headless Agg backend; interactive Jupyter rendering was
+  not tested. Neither notebook writes analysis outputs or scientific assets.
+- Scientific checks: 16 real-asset tests passed: CAMB/LaCE matching,
   real-weight determinism, native/external scalar parity, quadrature boundaries,
   realization sensitivity, snapshot interpolation resolution, injected noiseless nuisance recovery, and the
   cosmology-only bridge at neutrino mass 0 and 0.06 eV.
+  The two CM2026-specific native export/blinding checks are described below.
+  Two additional real BAO checks are explicitly enabled by `LYA_BAO_PACKAGES_PATH`.
 - cup1d `pytest -q -m 'not external_model'`: 38 passed, 1 external regression
   deselected. The full native DESI/GP tutorial regression was not run here.
 - Single-point evaluation, 30 accepted-step MCMC after 5 burn-in accepts, and
@@ -41,6 +76,49 @@ and the two public Karacayli2022 data/covariance files. Missing assets skip with
 their paths, or fail when `LYA_REQUIRE_SCIENTIFIC_ASSETS=1`. No asset is generated.
 
 ## Measured numerical results
+
+### CM2026 example update
+
+The new examples inherit native CM2026 defaults with `forest_mpg` instead of
+`lace_mpg`. Two additional real-asset checks pass: all 53 native fiducial values
+and bounds, fixed Planck18 background settings, and the frozen M(z) conversion
+table agree with native cup1d; the actual DESI metadata produces exactly the
+native blinding offsets. The covariance-missing path fails explicitly, as tested.
+The 12 existing real-asset regressions still pass on the preserved small fixture.
+
+The updated walkthrough contains all-redshift native-renderer plots, an optional
+likelihood-only Powell minimization, and a final plot at its actual fitted point.
+Fast tests exercise both spectra/residual renderers, cache reuse, minimizer
+success/budget failure, and diagnostic-only blinding. The full CM2026 notebook
+and fit **cannot be run end to end locally** until the corrected covariance file
+is supplied. This is not replaced by a covariance-disabled fit. Jupytext source
+structure/round trips and local synchronization are checked; only .py is tracked.
+The new helpers were also exercised with real weights on the explicitly separate
+small regression fixture: 11 initial/redshift panels, a converged 162-evaluation
+minimization (chi2≈946.6293), and a replot at the fitted point. This is not a
+CM2026 fit or a claim of a global minimum.
+
+### Optional DESI DR2 Lyα BAO check
+
+Cobaya 3.6.2 includes `bao.desi_dr2.desi_bao_lya`. Its official `bao_data` v2.6
+release was installed into `/tmp/lya_interface_bao.DE16vi` for validation, without
+changing global Cobaya paths or existing scientific assets. The BAO-only runner
+at native Planck18 gives loglike=-0.08147437084086256 (chi2=0.16294874168172513).
+An independent Gaussian evaluation using DH/rd and DM/rd matches; changing H0
+changes the likelihood. A real P1D+BAO check on the explicit small regression
+fixture also passes, sharing one CAMB provider and preserving separate terms.
+
+The baseline combined example is optional and not a calibrated CM2026 joint-fit
+validation: its P1D covariance is still missing, and P1D/BAO are multiplied under
+an unvalidated independence approximation. The default CM2026 background is
+fixed, so its BAO term is constant across the baseline sampled parameters.
+BAO tests require `LYA_BAO_PACKAGES_PATH` pointing to the official installation;
+without this explicit opt-in they skip as optional, not as successful validation.
+
+### Small-fixture numerical reference
+
+The following recorded numerical results use `examples/validation_demo.yaml`
+(the former small Karacayli2022 example), not the new full CM2026 configuration.
 
 At the explicit demonstration reference point: 110 bins, raw chi²=2000.6914968,
 loglike=-1000.3457484, omitted fixed logdet. Exported stars:
@@ -100,7 +178,9 @@ as calibrated emulator covariance or retrain as part of installing the interface
 - Initial ForestFlow examples admit the documented MPG/domain configuration,
   not arbitrary curvature/radiation/dark-energy/neutrino extensions. The massive
   neutrino bridge check alone does not admit such a full emulator analysis.
-- Blinded data are rejected pending an explicit authorized diagnostics policy.
+- Blinded data are rejected by default. The CM2026 examples explicitly select
+  `blinding_policy: native`, which applies the same dataset-seeded native offsets
+  to exported star diagnostics only, leaving physical predictions unchanged.
 - Multi-group/ragged/full cross-redshift covariance behavior is tested with
   lightweight fixtures; real-asset parity is the documented single public dataset.
 - The injected mock test recovers one nuisance amplitude at fixed cosmology/IGM;

@@ -7,6 +7,7 @@ COSMOLOGY = {"As", "ns", "nrun", "H0", "ombh2", "omch2", "mnu", "tau", "nnu", "o
 
 @dataclass(frozen=True)
 class Parameter:
+    """Immutable ownership and transformation record for one public parameter."""
     public: str
     backend: str
     owner: str
@@ -21,6 +22,17 @@ class Parameter:
 
 
 class ParameterRegistry:
+    """Map public Cobaya names onto cosmology, IGM, and nuisance backends.
+
+    Parameters
+    ----------
+    definitions : dict
+        Public Cobaya parameter definitions.
+    igm_names, nuisance_names : sequence of str
+        Native cup1d coefficient names owned by each subsystem.
+    backend_metadata : mapping, optional
+        Units and transformation descriptions keyed by backend name.
+    """
     def __init__(self, definitions, igm_names, nuisance_names, backend_metadata=None):
         self.entries = {}
         if len(set(igm_names + nuisance_names)) != len(igm_names + nuisance_names):
@@ -56,10 +68,25 @@ class ParameterRegistry:
                 raise ValueError("logA requires explicit exponential As transformation")
 
     def mapping(self, owner):
+        """Return public-to-backend names for one parameter owner."""
         return {p.public: p.backend for p in self.entries.values() if p.owner == owner}
 
 
 def route(values, mapping):
+    """Route public values into a backend-named parameter dictionary.
+
+    Parameters
+    ----------
+    values : mapping
+        Public parameter values.
+    mapping : mapping
+        Public-to-backend parameter-name mapping.
+
+    Returns
+    -------
+    dict
+        Backend values for entries present in both mappings.
+    """
     if set(values) != set(mapping):
         raise ValueError(f"parameter routing mismatch: expected {sorted(mapping)}, got {sorted(values)}")
     result = {mapping[k]: float(v) for k, v in values.items()}

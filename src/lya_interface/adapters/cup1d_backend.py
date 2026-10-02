@@ -7,7 +7,7 @@ from cup1d.models.contaminants.model_contaminants import Contaminants
 from cup1d.models.contaminants.model_systematics import Systematics
 from cup1d.models.igm.model_igm import IGM
 from cup1d.p1ds.factory import set_p1d, is_synthetic_data_label
-from cup1d.likelihood.external import ExternalP1DLikelihood
+from lya_interface.adapters.vectorized_backend import VectorizedP1DLikelihood
 from lya_interface.parameters import ParameterRegistry
 from lya_interface.provenance import file_identity
 from cup1d.likelihood.external import fingerprint
@@ -50,15 +50,34 @@ def make_igm(path, definitions):
     return IGM(free_param_names=igm, pars_igm=args.fid_igm), registry
 
 
-def make_backend(path, definitions, *, covariance_asset=None, fiducial_M=None,
-                 include_logdet=False):
+def native_blinding(path):
+    """
+    Resolve the same dataset-dependent diagnostic offsets as native cup1d.
+
+    This reads static data metadata only, never initializes CAMB or Analysis.
+    Offsets are applied to exported star diagnostics, not physical predictions.
+    """
+    from cup1d.utils.blinding import set_blinding
+    args, _, _ = native_configuration(path)
+    for name in args.data_label:
+        data = set_p1d(args, name)
+        if data.apply_blinding:
+            seed = int.from_bytes(data.blinding.encode("utf-8"), byteorder="big")
+            return set_blinding(True, seed)
+    return set_blinding(False, 0)
+
+
+def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
+                 include_logdet=False, blinding_policy="reject"):
     args, igm, nuisance = native_configuration(path)
     registry = registry_for(args, definitions, igm, nuisance)
     if any(is_synthetic_data_label(n) for n in args.data_label):
         raise ValueError("synthetic data require an explicit prepared static dataset, not a hidden native theory")
     data = {n: set_p1d(args, n) for n in args.data_label}
-    if any(d.apply_blinding for d in data.values()):
-        raise ValueError("provider-derived cosmological diagnostics are unblinded: use an explicitly authorized unblinded analysis, not a blinded native dataset")
+    if blinding_policy not in {"reject", "native"}:
+        raise ValueError("blinding_policy must be 'reject' or 'native'")
+    if blinding_policy != "native" and any(d.apply_blinding for d in data.values()):
+        raise ValueError("blinded data require blinding_policy='native' to preserve native diagnostic blinding")
     zs = sorted({float(z) for d in data.values() for z in d.z})
     if fiducial_M is None or set(map(float, fiducial_M)) != set(zs):
         raise ValueError("supply frozen fiducial_M keyed by every selected data redshift; no implicit CAMB initialization")
@@ -79,7 +98,7 @@ def make_backend(path, definitions, *, covariance_asset=None, fiducial_M=None,
         data={key: dict(z=d.z, k=[k.tolist() for k in d.k_kms], power=[p.tolist() for p in d.Pk_kms],
                        covariance=[c.tolist() for c in d.cov_Pk_kms],
                        full_covariance=None if d.full_cov_Pk_kms is None else d.full_cov_Pk_kms.tolist()) for key,d in data.items()})))
-    backend = ExternalP1DLikelihood(data,
+    backend = VectorizedP1DLikelihood(data,
         Contaminants(free_param_names=nuisance, pars_cont=args.fid_cont, ic_correction=args.ic_correction),
         Systematics(free_param_names=nuisance, pars_syst=args.fid_syst),
         cov_factor=args.cov_factor, emulator_covariance=error,

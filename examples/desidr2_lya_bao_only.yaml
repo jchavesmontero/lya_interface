@@ -1,0 +1,24 @@
+# Standalone distance check; no ForestFlow weights or covariance required.
+params:
+  H0:
+    prior: {min: 65.0, max: 70.0}
+    ref: 67.66
+    proposal: 0.1
+  ombh2: 0.02242
+  omch2: 0.11933
+  mnu: 0.0
+  nnu: 3.044
+  omk: 0.0
+  tau: 0.0
+  As: 2.105209331337507e-9
+  ns: 0.9665
+  nrun: 0.0
+theory:
+  camb:
+    extra_args:
+      WantCls: false
+      Want_CMB: false
+      neutrino_hierarchy: degenerate
+      num_massive_neutrinos: 0
+likelihood:
+  bao.desi_dr2.desi_bao_lya: null

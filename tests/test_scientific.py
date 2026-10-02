@@ -33,7 +33,7 @@ def model():
     missing = [str(p) for p in needed if not p.is_file()]
     if missing:
         unavailable("missing scientific assets: " + ", ".join(missing))
-    info = load_configuration(ROOT/"examples/cup1d_evaluate.yaml")
+    info = load_configuration(ROOT/"examples/validation_demo.yaml")
     info["params"]["H0"] = dict(prior=dict(min=66.,max=69.),ref=67.66,proposal=.1)
     for section in ("theory","likelihood"):
         for name, options in info[section].items():
@@ -296,7 +296,7 @@ def test_noiseless_mock_recovers_injected_nuisance(model):
 @pytest.mark.parametrize("mass", [0., .06])
 def test_cosmology_only_neutrino_growth_and_fit_conventions(mass):
     from lace.cosmo.cosmology import Cosmology
-    info=load_configuration(ROOT/"examples/cup1d_evaluate.yaml")
+    info=load_configuration(ROOT/"examples/validation_demo.yaml")
     del info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]
     info["params"]={k:v for k,v in info["params"].items() if not k.startswith(("igm_","p1d_"))}
     info["params"]["mnu"]=mass

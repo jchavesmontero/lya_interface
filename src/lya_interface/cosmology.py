@@ -8,6 +8,18 @@ from .contracts import NumericalCoverageError
 
 
 def readonly(array):
+    """Return an immutable float64 array detached from the input buffer.
+
+    Parameters
+    ----------
+    array : array_like
+        Numerical values to copy into an immutable contiguous representation.
+
+    Returns
+    -------
+    numpy.ndarray
+        Read-only array with ``float64`` dtype.
+    """
     # A bytes-backed array cannot have WRITEABLE re-enabled by consumers.
     a = np.asarray(array, dtype=np.float64)
     return np.frombuffer(a.tobytes(), dtype=np.float64).reshape(a.shape)
@@ -15,6 +27,20 @@ def readonly(array):
 
 @dataclass(frozen=True)
 class CobayaCosmologySnapshot(BaseCosmology):
+    """Immutable, point-specific linear cosmology supplied by Cobaya.
+
+    Parameters
+    ----------
+    redshifts : tuple of float
+        Provider redshifts at which all background and linear-power products
+        are sampled.
+    k_iMpc : array_like
+        Strictly increasing comoving wavenumber grid in 1/Mpc.
+    power_Mpc3 : array_like
+        Linear ``delta_nonu`` power with shape ``(nz, nk)`` in Mpc^3.
+    hubble, growth : array_like
+        Hubble rate in km/s/Mpc and growth rate at ``redshifts``.
+    """
     redshifts: tuple
     k_iMpc: object
     power_Mpc3: object
@@ -53,11 +79,13 @@ class CobayaCosmologySnapshot(BaseCosmology):
             raise NumericalCoverageError(f"redshift {z} was not requested from CAMB") from error
 
     def validate_k(self, k):
+        """Raise if wavenumbers lie outside the stored linear-power grid."""
         k = np.asarray(k)
         if np.any(~np.isfinite(k)) or np.any(k < self.k_iMpc[0]) or np.any(k > self.k_iMpc[-1]):
             raise NumericalCoverageError(f"k lies outside snapshot [{self.k_iMpc[0]}, {self.k_iMpc[-1]}] /Mpc; increase configured provider range")
 
     def compute_linP_Mpc(self, z, k_Mpc, species="bc"):
+        """Interpolate the linear baryon-plus-CDM power in Mpc units."""
         if species != "bc":
             raise ValueError("snapshot contains linear delta_nonu (bc), not total matter")
         self.validate_k(k_Mpc)
@@ -68,16 +96,21 @@ class CobayaCosmologySnapshot(BaseCosmology):
         return np.asarray([values[self._index(v)] for v in zs.flat]).reshape(zs.shape)
 
     def compute_hubble_parameter(self, z):
+        """Return the stored Hubble rate at requested snapshot redshifts."""
         return self._background(z, self.hubble)
 
     def compute_growth_rate(self, z):
+        """Return the stored linear growth rate at requested redshifts."""
         return self._background(z, self.growth)
 
     def get_kmax_linP_Mpc(self):
+        """Return the largest supported linear wavenumber in 1/Mpc."""
         return float(self.k_iMpc[-1])
 
     def get_mnu(self):
+        """Return the summed neutrino mass in eV."""
         return self.mnu
 
     def get_primordial_params(self):
+        """Return the primordial parameters used to build this snapshot."""
         return dict(self.primordial)

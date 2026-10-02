@@ -4,7 +4,6 @@ import numpy as np
 from cobaya.theory import Theory
 from lya_interface.adapters.cup1d_backend import make_igm
 from lya_interface.contracts import PredictionRequest, PredictionContext, ModelDomainError
-from lya_interface.cosmology import readonly
 from lya_interface.parameters import route
 
 
@@ -13,12 +12,14 @@ class ForestFlowTheory(Theory):
     native_config: str | None = None
     parameter_definitions: dict = {}
     model_key: str = "forest_mpg_fix"
+    emulator_label: str | None = None
     model_path: str | None = None
     transformation_path: str | None = None
     realizations: int = 1000
     seed: int = 0
     projection: dict = {}
     hull_factor: float = 1.
+    enforce_training_hull: bool = True
     cosmology_domain: dict = {}
 
     def initialize(self):
@@ -38,7 +39,14 @@ class ForestFlowTheory(Theory):
             if len(bounds) != 2 or not np.all(np.isfinite(bounds)) or bounds[0] > bounds[1]:
                 raise ValueError(f"invalid supported domain for {name}")
         self.params = {k: None for k in self.mapping}
-        self.emulator = P3DEmulator(key=None if self.model_path else self.model_key,
+        key = self.model_key
+        if self.emulator_label is not None:
+            # cup1d owns these aliases; do not create another alias table here.
+            from cup1d.emulator.factory import _EMULATOR_ALIASES
+            if self.emulator_label not in {"forest_mpg", "forest_mpg_old"}:
+                raise ValueError("ForestFlowTheory requires a cup1d ForestFlow emulator alias")
+            key = _EMULATOR_ALIASES[self.emulator_label]
+        self.emulator = P3DEmulator(key=None if self.model_path else key,
             model_path=self.model_path, transf_file=self.transformation_path, Nrealizations=self.realizations)
         required = {"Delta2_p", "n_p", "mF", "gamma", "sigT_Mpc", "kF_Mpc"}
         if not required <= set(self.emulator.input_labels) or set(self.emulator.input_labels) - required - {"alpha_p"}:
@@ -88,7 +96,7 @@ class ForestFlowTheory(Theory):
     def calculate(self, state, want_derived=True, **params_values):
         from forestflow.model.arinyo import ArinyoModel
         from forestflow.model.linear import LinearTheoryGrid
-        from forestflow.statistics.p1d import P1D_kms
+        from lya_interface.projection import project_request
         snapshot = self.provider.get_result("lya_cosmology")
         try:
             for name, bounds in self.cosmology_domain.items():
@@ -113,7 +121,7 @@ class ForestFlowTheory(Theory):
                 if not all(np.isfinite(v) for v in row.values()) or not 0 < row["mF"] < 1 or any(row[k] <= 0 for k in ("Delta2_p", "gamma", "sigT_Mpc", "kF_Mpc")):
                     raise ModelDomainError("nonphysical IGM/emulator input")
                 inputs.append(row)
-            if not self.hull.in_hulls(np.array([[row[k] for k in self.domain_labels] for row in inputs])):
+            if self.enforce_training_hull and not self.hull.in_hulls(np.array([[row[k] for k in self.domain_labels] for row in inputs])):
                 raise ModelDomainError("outside native training pairwise hull")
             # Redshift-independent common random numbers: stable latent block
             # zero for each input, invariant under batching/order/chunking.
@@ -123,29 +131,12 @@ class ForestFlowTheory(Theory):
             arinyo = {z: MappingProxyType({k: float(np.atleast_1d(ari[k])[i]) for k in self.emulator.output_labels}) for i, z in enumerate(zs)}
             model = ArinyoModel(fiducial_cosmology=snapshot)
             linear = LinearTheoryGrid(z=np.array(zs), cosmology=snapshot)
-            powers = {}
-            projected = {}
-            for group in self.request.groups:
-                rows = []
-                for z, k in zip(group.redshifts, group.k_ikms):
-                    key = (z, k)
-                    if key in projected:
-                        rows.append(projected[key])
-                        continue
-                    m = M[zs.index(z)]
-                    if max(k)*m > self.emulator.kmax_1d_iMpc:
-                        raise ModelDomainError("parallel k outside trained P1D coverage")
-                    snapshot.validate_k(np.sqrt((np.asarray(k)*m)**2 + self.integrator.k_perp_iMpc[-1]**2))
-                    snapshot.validate_k(np.sqrt((np.asarray(k)*m)**2 + self.integrator.k_perp_iMpc[0]**2))
-                    p = P1D_kms(linear, z, np.asarray(k), model.P3D_Mpc_kpar_kperp, m,
-                                arinyo[z], integrator=self.integrator)
-                    if not np.all(np.isfinite(p)) or np.any(p <= 0):
-                        raise FloatingPointError("non-finite/nonpositive Arinyo projection")
-                    projected[key] = readonly(p)
-                    rows.append(projected[key])
-                powers[group.identifier] = tuple(rows)
+            powers = project_request(
+                self.request, snapshot, model, linear, arinyo, self.integrator,
+                self.emulator.kmax_1d_iMpc,
+            )
             context = PredictionContext(self.request.identity, zs, tuple(flux), tuple(M))
-            state["forestflow_p1d"] = MappingProxyType(dict(valid=True, powers=MappingProxyType(powers), context=context,
+            state["forestflow_p1d"] = MappingProxyType(dict(valid=True, powers=powers, context=context,
                 inputs=tuple(MappingProxyType(r) for r in inputs), cosmology_id=snapshot.identity))
             state["forestflow_arinyo"] = MappingProxyType(arinyo)
         except ModelDomainError as error:

@@ -62,7 +62,9 @@ jobs:
         working-directory: lya_interface
         env:
           LYA_REQUIRE_SCIENTIFIC_ASSETS: '1'
-      - run: python examples/evaluate_point.py --provenance evaluate.provenance.json
+      # Provenance for the calibrated-covariance-independent regression fixture.
+      # CM2026 requires the separately supplied ForestFlow covariance product.
+      - run: python examples/evaluate_point.py examples/validation_demo.yaml --provenance evaluate.provenance.json
         working-directory: lya_interface
       - uses: actions/upload-artifact@v4
         with:

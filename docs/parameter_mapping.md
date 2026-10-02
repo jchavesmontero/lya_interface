@@ -53,6 +53,12 @@ are separate from prior densities. `ignore_prior: true` maximizes the likelihood
 but Cobaya still enforces support bounds; the demo minimum is not a production
 MLE over a validated wide parameter domain.
 
-Diagnostics are **unblinded**. The adapter rejects data requesting native
-blinding rather than silently export unblinded stars or invent a transformation.
-A production blinded analysis needs an explicit authorized export policy.
+The default adapter policy rejects blinded data. The CM2026 examples explicitly
+select `blinding_policy: native`: the likelihood requests `lya_blinding` from
+the cosmology component, which reads static dataset metadata and applies the
+same cup1d seed and offsets to exported Delta2star/nstar/alphastar diagnostics.
+Physical snapshots, IGM inputs, projections and likelihoods remain unshifted.
+The notebooks neither remove the offsets nor display fitted As/ns. As in native
+cup1d, internal sampled coordinates are physical, not newly blinded variables;
+this policy does not make raw sampled-coordinate files safe for public release.
+The unblinded `validation_demo.yaml` remains a separate regression fixture.

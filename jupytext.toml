@@ -1,0 +1,2 @@
+# Pair notebooks with reviewable Python sources; Git tracks only the .py files.
+formats = "ipynb,py:percent"

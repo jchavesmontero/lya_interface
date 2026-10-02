@@ -10,7 +10,8 @@ requires-python = ">=3.12"
 dependencies = ["cobaya>=3.6.2,<4", "numpy", "scipy", "PyYAML"]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "jupytext>=1.19"]
+notebooks = ["jupyterlab", "ipykernel", "jupytext>=1.19", "nbformat", "matplotlib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
