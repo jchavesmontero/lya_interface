@@ -74,9 +74,17 @@ def collect(info, model=None):
                 for suffix in (".pt", "_metadata.npy", "_transf.npy", "_manifest.json"):
                     if Path(prefix + suffix).exists():
                         result["assets"].append(file_identity(prefix + suffix))
+    # IGM-history files are inputs to the cup1d adapter only.  A Vega native
+    # configuration is an INI file, so treating every ``native_config`` as a
+    # cup1d YAML both records unrelated assets and eventually calls
+    # ``Args.from_yaml`` on an INI file.
+    cup1d_options = [
+        options for name, options in info.get("likelihood", {}).items()
+        if name.endswith("Cup1DLikelihood") and isinstance(options, dict)
+        and options.get("native_config")
+    ]
     history_paths = []
-    if any(isinstance(options, dict) and options.get("native_config")
-           for options in info.get("likelihood", {}).values()):
+    if cup1d_options:
         from cup1d.utils.utils import get_path_repo
         from lace.configuration import get_nyx_path
         history_paths = [Path(get_path_repo("lace"))/"data/sim_suites/Australia20"/name
@@ -85,8 +93,8 @@ def collect(info, model=None):
     for path in history_paths:
         if path.is_file():
             result["assets"].append(file_identity(path))
-    for options in info.get("likelihood", {}).values():
-        if isinstance(options, dict) and options.get("native_config"):
+    for options in cup1d_options:
+        if options.get("native_config"):
             from cup1d import Args
             args = Args.from_yaml(options["native_config"], verbose=False)
             for label in args.data_label:
@@ -114,4 +122,9 @@ def collect(info, model=None):
             estimator="transformed-space mean Arinyo parameters, then project",
             latent_assignment="common random block 0 for every redshift/input")
             for name, component in model.theory.items() if hasattr(component,"emulator")}
+        result["derived_output_mappings"] = {
+            name: component.derived_output_mapping()
+            for name, component in model.theory.items()
+            if hasattr(component, "derived_output_mapping")
+        }
     return result

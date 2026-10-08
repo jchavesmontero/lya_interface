@@ -45,3 +45,13 @@ def test_joint_notebook_uses_combined_configuration_and_native_diagnostics():
     assert calls.count("plot_point") == 2
     assert calls.count("minimize_point") == 1
     assert "RUN_MINIMIZATION = False" in source
+
+
+def test_cup1d_vega_mock_notebook_has_compact_joint_workflow():
+    notebook = jupytext.read(NOTEBOOKS / "04_joint_cup1d_vega_mock.py")
+    source = "\n".join(c.source for c in notebook.cells if c.cell_type == "code")
+    assert "examples/joint_desi_dr1_vega_mock.yaml" in source
+    assert "igm_tau_eff_3" in source
+    assert "parameters_for_evaluation" in source
+    assert "plot_vega_point" in source
+    assert "minimize_point" in source

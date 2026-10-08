@@ -4,8 +4,11 @@ Full **cup1d P1D data likelihood** in Cobaya: CAMB → immutable cosmology →
 ForestFlow mean Arinyo coefficients → uncontaminated P1D → native cup1d
 contaminants, resolution, rebinning and correlated covariance.
 
-cupix and Vega remain deferred. Do not combine this with the compressed
-`cobaya_lya_p1d` likelihood for the same data.
+cupix remains deferred. An optional Vega adapter can consume the same
+ForestFlow coefficient bundle at Vega's effective redshift. It deliberately
+retains Vega's fixed native linear template, so this is a hybrid approximation
+rather than a cosmology-consistent template replacement. Do not combine this
+with the compressed `cobaya_lya_p1d` likelihood for the same data.
 
 ## Install and run
 
@@ -28,6 +31,23 @@ The Python loader resolves example paths when running from another directory.
 overrides a sampler's output prefix, and `--provenance /path/to/file.json` saves
 revisions, checksums, settings and the resolved registry/request. Create its
 parent directory first.
+
+`examples/vega_native_reference.yaml` is a reproducible adapter reference for
+the supplied Lyα Vega configuration. It exercises Vega in native-template mode
+with `chi2(include_priors=False)` and migrates its Gaussian priors to Cobaya
+once. It is not a ForestFlow-coupled scientific fit. Coupled mode requires a
+ForestFlowTheory configuration, `small scale nl = forestflow` in the Vega data
+INI, a documented fixed template `h` (the supplied template has H0=67.36), and
+the fixed-template/effective-redshift/zero-cross-covariance assumptions stated
+in the architecture document.
+
+`examples/vega_forestflow_main.ini` and
+`examples/vega_lyaxlya_forestflow.ini` are the non-destructive derived Vega
+INI pair for coupled mode. They retain the native data, distortion, metal,
+peak/smooth and template choices while selecting the new correction.
+`examples/joint_validation_vega_forestflow.yaml` combines those INIs with the
+small P1D validation fixture; it is a smoke-test example, not a calibrated
+CM2026 production fit.
 
 The examples inherit cup1d's **CM2026 baseline**, changing the emulator alias
 from `lace_mpg` to `forest_mpg`. They use DESIY1_QMLE3, rebinning factor 8,
@@ -123,6 +143,12 @@ as the command-line demonstration; none retrains or writes scientific assets.
   optionally minimize the summed data likelihood and plot the best fit.
   Requires the optional BAO data installation above. The fixed CM2026
   background makes BAO a constant; the combination assumes independence.
+- [Joint DESI DR1 cup1d + Vega Y3 mock](notebooks/04_joint_cup1d_vega_mock.py):
+  vary `As`, `ns`, four mean-flux nodes, selected cup1d/Vega nuisances and
+  `ap`/`at`; inspect shared Arinyo coefficients; plot both data branches;
+  then optionally run a bounded joint minimization and replot its actual best
+  valid point. This is a fixed-template, zero-cross-covariance smoke fit, not
+  a consistency test between the two data sets.
 
 These use the CM2026 configuration and its asset/numerical limitations described
 above. The walkthrough's `RUN_MINIMIZATION` flag is off by default; enable it

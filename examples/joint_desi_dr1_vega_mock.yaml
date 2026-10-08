@@ -1,0 +1,27 @@
+# Interactive DESI DR1 P1D + Vega Y3-mock demonstration.
+#
+# The notebook freezes all but its documented small set of exploratory
+# parameters at their native references.  This file deliberately retains the
+# complete CM2026 public registry so both cup1d backends receive their required
+# fixed nuisance coefficients.
+interface_base: cup1d_evaluate.yaml
+
+parameter_overrides:
+  ap: {prior: {min: 0.8, max: 1.2}, ref: 1.0, proposal: 0.02}
+  at: {prior: {min: 0.8, max: 1.2}, ref: 1.0, proposal: 0.02}
+  beta_hcd: {prior: {dist: norm, loc: 0.5, scale: 0.09}, ref: 0.5, proposal: 0.02}
+  L0_hcd: {prior: {dist: norm, loc: 5.0, scale: 2.0}, ref: 5.3, proposal: 0.1}
+  drp_QSO: {prior: {dist: norm, loc: 0.0, scale: 1.0}, ref: 0.0, proposal: 0.1}
+
+additional_likelihoods:
+  lya_interface.likelihoods.vega.VegaLikelihood:
+    native_config: vega_forestflow_main.ini
+    template_h: 0.6736  # Fixed Abacus-Colore-2LPT template header value.
+    use_forestflow: true
+    prior_policy: external
+    parameter_mapping:
+      ap: ap
+      at: at
+      beta_hcd: beta_hcd
+      L0_hcd: L0_hcd
+      drp_QSO: drp_QSO

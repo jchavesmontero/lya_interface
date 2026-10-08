@@ -1,5 +1,32 @@
 # Validation record and limitations
 
+## Native Vega reference
+
+Captured on 2026-10-07 from
+`/home/jchaves/Proyectos/projects/lya/data/mocks_bao/baseline/fits/main_lya.ini`
+(SHA-256 `17ea8e117bf45b8c87d6934a337f8301e37529528638fe6f0d872fba7e622611`)
+using Vega revision `c5221e16258cd6d41aee928ec7b8973d920e2eae`.
+The native public `VegaInterface.chi2()` value was `3435.2764386287995`; the
+new public data-only boundary, `chi2(include_priors=False)`, was
+`3435.2539386287995`. The difference (`0.02250000000003638`) is exactly the
+native configured Gaussian-prior penalty. This validates reference bookkeeping
+only; it does not validate a coupled ForestFlow calculation.
+
+The joint Cobaya smoke graph could not be instantiated in this sandbox because
+the installed CAMB binary attempts `MPI_Init_thread`, which is disallowed by
+the container's network namespace even with `COBAYA_NOMPI=1`. This is an
+environmental limitation, not evidence of a finite coupled result; the native
+Vega adapter and configuration-routing checks above were run directly.
+The derived `examples/vega_forestflow_main.ini` was also initialized directly:
+it reports `zeff=2.3`, requests only `forestflow_coefficients` at that redshift,
+and has no remaining native `bias_LYA`, `bias_eta_LYA`, or `beta_LYA` entries.
+
+The associated checkouts were lya_interface `6c28ebc5b9895a3442fb0261e6f77c5510d6da00`,
+cup1d `4f761b35ca9a78762ac9a8e2836d31468aedc199`, ForestFlow
+`6c5fa89909ce6ebe93899265b09549ac28783aba`, and Vega
+`c5221e16258cd6d41aee928ec7b8973d920e2eae`. Existing unrelated Vega and
+ForestFlow working-tree changes were preserved.
+
 ## Vectorized CM2026/DR1 execution
 
 The interface now performs one native P1D array projection for all unique
@@ -187,8 +214,10 @@ as calibrated emulator covariance or retrain as part of installing the interface
   it is not a general multi-parameter cosmological recovery result.
 - Wider production data cuts, covariance, priors, realization convergence and
   native spline configurations must be selected and validated explicitly.
-- cupix and Vega remain deferred; no adapters, projections or dependencies were
-  added for them. The same-data compressed likelihood must not be combined here.
+- cupix remains deferred. Vega is available only through the documented
+  fixed-template, effective-redshift ForestFlow hybrid and assumes zero P1D--Vega
+  cross-covariance; it is not yet a cosmology-consistent Vega-template analysis.
+  The same-data compressed likelihood must not be combined here.
 
 ## CI and upstream prerequisite
 
@@ -198,5 +227,5 @@ are pinned above. Supply the **full SHA of the cup1d external-API prerequisite
 PR** via `cup1d_ref`; no nonexistent upstream commit is invented before this work
 is committed/merged. Scientific CI verifies installed sibling SHAs and makes
 missing assets failures, uses existing caches, and uploads provenance. It neither
-clones large archives nor installs deferred likelihoods. Once the prerequisite
+clones large archives nor installs cupix. Once the prerequisite
 SHA is available, automatic PR triggers can be enabled against that pin.

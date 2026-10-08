@@ -5,6 +5,49 @@ import numpy as np
 from lya_interface.parameters import route
 
 
+@dataclass(frozen=True)
+class ComponentEvaluation:
+    """Data-only likelihood terms for an arbitrary configured graph.
+
+    ``minus2_loglike`` is the exact convention returned by each component;
+    callers must not relabel it as raw data chi-square when a normalization is
+    included.  P1D's raw chi-square remains available through
+    :func:`evaluate_point`.
+    """
+    loglikes: dict
+    minus2_loglike: dict
+    total_minus2_loglike: float
+
+
+def evaluate_components(model, point):
+    """Evaluate every configured data likelihood without assuming P1D.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Initialized P1D-only, Vega-only, or joint dependency graph.
+    point : mapping
+        Physical sampled parameter values.
+
+    Returns
+    -------
+    ComponentEvaluation
+        Likelihood-name keyed log likelihoods and their total data objective.
+
+    Raises
+    ------
+    ValueError
+        If the point is outside support or the model domain.
+    """
+    posterior = model.logposterior(point)
+    if not np.isfinite(posterior.logpost):
+        raise ValueError("point is outside the prior or admitted model domain")
+    loglikes = {name: float(value)
+                for name, value in zip(model.likelihood, posterior.loglikes)}
+    return ComponentEvaluation(loglikes, {name: -2 * value for name, value in loglikes.items()},
+                               -2 * float(sum(loglikes.values())))
+
+
 def cup1d_component(model):
     """Select the unique cup1d P1D likelihood without relying on ordering.
 
@@ -150,7 +193,8 @@ class PointFit:
     point : dict
         Best sampled physical parameter values.
     chi2_data : float
-        P1D data chi-squared at ``point``.
+        P1D data chi-squared at ``point``, or ``NaN`` when the configured
+        graph has no P1D component (for example Vega-only mode).
     success : bool
         Optimizer convergence flag.
     message : str
@@ -200,7 +244,7 @@ def minimize_point(
     Returns
     -------
     PointFit
-        Best valid evaluated point, P1D chi-squared, combined objective,
+        Best valid evaluated point, P1D chi-squared (or ``NaN`` for Vega-only), combined objective,
         evaluation count and optimizer convergence status.
 
     Raises
@@ -214,8 +258,9 @@ def minimize_point(
     the configured Cobaya priors; scientific-domain exclusions remain infinite
     objective values. A failed/budget-limited run is not called a best fit.
     All configured likelihood terms enter the objective (including optional
-    BAO); ``chi2_data`` remains the P1D diagnostic and ``minus2_loglike_total``
-    reports the combined objective. Nothing is written to disk. Multiple starts/convergence checks remain the
+    BAO); ``chi2_data`` remains the P1D diagnostic when present and is ``NaN``
+    in Vega-only mode, while ``minus2_loglike_total`` reports the combined
+    objective. Nothing is written to disk. Multiple starts/convergence checks remain the
     responsibility of the analysis, as for native minimization.
     With ``verbose=True``, print initial/final diagnostics and progress every
     ``report_every`` optimizer evaluations, without displaying fitted parameters.
@@ -244,7 +289,12 @@ def minimize_point(
     start = (np.array([initial_point[n] for n in names]) - lower) / width
     if np.any(start < 0) or np.any(start > 1):
         raise ValueError("initial point lies outside parameter bounds")
-    initial_result, _ = evaluate_point(model, initial_point)
+    try:
+        cup1d_component(model)
+    except ValueError:
+        initial_result = None
+    else:
+        initial_result, _ = evaluate_point(model, initial_point)
 
     def physical(x):
         return dict(zip(names, lower + np.asarray(x) * width))
@@ -253,10 +303,11 @@ def minimize_point(
     best_value = -float(np.sum(model.logposterior(initial_point).loglikes))
     evaluations = 0
     if verbose:
+        initial_label = (f"{initial_result.chi2_data:.6g}"
+                         if initial_result is not None else "n/a")
         print(
             f"Nelder-Mead: {len(names)} parameters, budget={max_evals}; "
-            f"initial chi2_P1D={initial_result.chi2_data:.6g}, "
-            f"-2logL_total={2 * best_value:.6g}",
+            f"initial chi2_P1D={initial_label}, -2logL_total={2 * best_value:.6g}",
             flush=True,
         )
 
@@ -273,10 +324,11 @@ def minimize_point(
             best_x, best_value = np.array(x, copy=True), value
         if verbose and count and evaluations % report_every == 0:
             if np.isfinite(value):
-                current, _ = evaluate_point(model, physical(x))
-                detail = (
-                    f"chi2_P1D={current.chi2_data:.6g}, -2logL_total={2 * value:.6g}"
-                )
+                if initial_result is None:
+                    detail = f"chi2_P1D=n/a, -2logL_total={2 * value:.6g}"
+                else:
+                    current, _ = evaluate_point(model, physical(x))
+                    detail = f"chi2_P1D={current.chi2_data:.6g}, -2logL_total={2 * value:.6g}"
             else:
                 detail = "invalid trial (-2logL_total=inf)"
             print(
@@ -303,20 +355,20 @@ def minimize_point(
     )
     final_valid = np.isfinite(objective(fit.x, count=False))
     point = physical(best_x)
-    result, _ = evaluate_point(model, point)
+    result = evaluate_point(model, point)[0] if initial_result is not None else None
     message = str(fit.message)
     if not final_valid:
         message += " Returned point invalid; retained best valid evaluation."
     if verbose:
+        final_label = f"{result.chi2_data:.6g}" if result is not None else "n/a"
         print(
             f"Finished: success={bool(fit.success) and final_valid}, evaluations={fit.nfev}; "
-            f"chi2_P1D={result.chi2_data:.6g}, -2logL_total={2 * best_value:.6g}. "
-            f"{message}",
+            f"chi2_P1D={final_label}, -2logL_total={2 * best_value:.6g}. {message}",
             flush=True,
         )
     return PointFit(
         point,
-        result.chi2_data,
+        np.nan if result is None else result.chi2_data,
         bool(fit.success) and final_valid,
         message,
         int(fit.nfev),

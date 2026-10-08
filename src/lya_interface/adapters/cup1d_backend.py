@@ -5,7 +5,7 @@ from cup1d import Args
 from cup1d.likelihood.parameters import set_free_likelihood_parameters
 from cup1d.models.contaminants.model_contaminants import Contaminants
 from cup1d.models.contaminants.model_systematics import Systematics
-from cup1d.models.igm.model_igm import IGM
+from lya_interface.igm import IGM
 from cup1d.p1ds.factory import set_p1d, is_synthetic_data_label
 from lya_interface.adapters.vectorized_backend import VectorizedP1DLikelihood
 from lya_interface.parameters import ParameterRegistry

@@ -62,3 +62,14 @@ The notebooks neither remove the offsets nor display fitted As/ns. As in native
 cup1d, internal sampled coordinates are physical, not newly blinded variables;
 this policy does not make raw sampled-coordinate files safe for public release.
 The unblinded `validation_demo.yaml` remains a separate regression fixture.
+
+## Joint structured configuration
+
+Joint configurations may use `parameters.general`, `parameters.P1D`, and
+`parameters.BAO` instead of flat `params`. The loader converts that form to
+Cobaya's flat namespace and saves explicit public/native/section/transform/
+unit/status records in `interface_metadata.parameter_mapping`. Native aliases
+must be unique across the three sections, and a derived record cannot have a
+sampling prior. General is the sole owner of shared cosmology/IGM parameters;
+P1D and BAO nuisances remain independent even if their names resemble one
+another.

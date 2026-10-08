@@ -6,7 +6,7 @@ from cobaya.component import get_component_class
 from cobaya.likelihood import Likelihood
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
-from lya_interface.diagnostics import evaluate_point, cup1d_component, minimize_point
+from lya_interface.diagnostics import evaluate_point, evaluate_components, cup1d_component, minimize_point
 from test_diagnostics import configuration
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +39,28 @@ class DistanceFixture(Likelihood):
     def logp(self, **params):
         h = float(np.atleast_1d(self.provider.get_Hubble([3.]))[0])
         return -.5 * ((h-560.)/10.)**2 - 2.
+
+
+class VegaOnlyFixture(Likelihood):
+    """Minimal non-P1D component exercising neutral diagnostics."""
+    def get_can_support_params(self):
+        return ["ap"]
+
+    def logp(self, ap, **params):
+        return -3.5
+
+
+def test_component_diagnostics_support_vega_only_graphs():
+    config = {"params": {"ap": {"prior": {"min": .8, "max": 1.2}, "ref": 1.}},
+              "likelihood": {"vega": {"external": VegaOnlyFixture}}}
+    with get_model(config) as model:
+        result = evaluate_components(model, {"ap": 1.})
+        assert result.loglikes == {"vega": -3.5}
+        assert result.minus2_loglike == {"vega": 7.0}
+        assert result.total_minus2_loglike == 7.0
+        fit = minimize_point(model, {"ap": 1.}, max_evals=8, verbose=False)
+        assert np.isnan(fit.chi2_data)
+        assert fit.minus2_loglike_total == pytest.approx(7.0)
 
 
 def test_combined_diagnostics_select_p1d_independent_of_order():

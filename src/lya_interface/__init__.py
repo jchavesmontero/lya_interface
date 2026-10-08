@@ -1,1 +1,1 @@
-"""Full P1D inference; cupix and Vega are deliberately not integrated."""
+"""Shared ForestFlow P1D and Vega likelihood integration; cupix is deferred."""

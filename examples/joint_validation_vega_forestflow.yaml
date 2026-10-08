@@ -1,0 +1,25 @@
+# A bounded joint P1D + Vega validation graph. It inherits the small,
+# unblinded P1D fixture only; it is not a CM2026 production analysis.
+# Assumptions: fixed Vega linear template at zeff=2.3, ForestFlow D_NL applied
+# once, and zero P1D--Vega cross-covariance.
+interface_base: validation_demo.yaml
+
+parameter_overrides:
+  ap: {prior: {min: 0.8, max: 1.2}, ref: 1.0, proposal: 0.02}
+  at: {prior: {min: 0.8, max: 1.2}, ref: 1.0, proposal: 0.02}
+  beta_hcd: {prior: {dist: norm, loc: 0.5, scale: 0.09}, ref: 0.5, proposal: 0.02}
+  L0_hcd: {prior: {dist: norm, loc: 5.0, scale: 2.0}, ref: 5.3, proposal: 0.1}
+  drp_QSO: {prior: {dist: norm, loc: 0.0, scale: 1.0}, ref: 0.0, proposal: 0.1}
+
+additional_likelihoods:
+  lya_interface.likelihoods.vega.VegaLikelihood:
+    native_config: vega_forestflow_main.ini
+    template_h: 0.6736  # Header H0=67.36 of Abacus-Colore-2LPT.fits.
+    use_forestflow: true
+    prior_policy: external
+    parameter_mapping:
+      ap: ap
+      at: at
+      beta_hcd: beta_hcd
+      L0_hcd: L0_hcd
+      drp_QSO: drp_QSO

@@ -4,6 +4,29 @@ from pathlib import Path
 import os
 import numpy as np
 import pytest
+
+
+@pytest.mark.scientific
+def test_shared_igm_matches_legacy_cup1d_histories():
+    """The extracted implementation preserves the native history values."""
+    from pathlib import Path
+    import numpy as np
+    from cup1d import Args
+    from cup1d.likelihood.parameters import set_free_likelihood_parameters
+    from cup1d.models.igm.model_igm import IGM as LegacyIGM
+    from lya_interface.igm import IGM as SharedIGM
+
+    config = Path(__file__).parents[2] / "cup1d" / "configs" / "cm2026" / "cm2026_base.yaml"
+    args = Args.from_yaml(config, verbose=False)
+    names = set_free_likelihood_parameters(args, emulator_label=args.emulator_label)
+    free = [name for name in names if name.rsplit("_", 1)[0] in args.igm_params]
+    legacy, shared = (klass(free_param_names=free, pars_igm=args.fid_igm)
+                      for klass in (LegacyIGM, SharedIGM))
+    z = np.array([2.2, 3.0, 4.0])
+    for sector, method in (("F_model", "get_tau_eff"), ("T_model", "get_gamma"),
+                           ("T_model", "get_sigT_kms"), ("P_model", "get_kF_kms")):
+        np.testing.assert_allclose(getattr(legacy.models[sector], method)(z),
+                                   getattr(shared.models[sector], method)(z), rtol=0, atol=0)
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
 from lya_interface.parameters import route

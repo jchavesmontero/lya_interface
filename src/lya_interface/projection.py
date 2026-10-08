@@ -1,10 +1,6 @@
-"""Coalesced redshift projection using ForestFlow's native array kernel."""
-from types import MappingProxyType
+"""Compatibility wrapper for cup1d's public coefficient projection route."""
 
-import numpy as np
-
-from lya_interface.cosmology import readonly
-from lya_interface.contracts import ModelDomainError
+from lya_interface.contracts import ModelDomainError, NumericalCoverageError
 
 
 def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_iMpc):
@@ -48,35 +44,15 @@ def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_i
     The single native P1D projection integrates only along the transverse
     axis; parameter arrays have explicit singleton k and transverse axes.
     """
-    from forestflow.statistics.p1d import P1D_Mpc
-
-    keys = list(dict.fromkeys(
-        (z, k) for group in request.groups for z, k in zip(group.redshifts, group.k_ikms)
-    ))
-    zs = np.array([z for z, _ in keys])
-    lengths = np.array([len(k) for _, k in keys])
-    conversion = np.asarray(snapshot.get_dkms_diMpc(zs))
-    k_iMpc = np.empty((len(keys), int(lengths.max())))
-    for i, (_, k) in enumerate(keys):
-        row = np.asarray(k) * conversion[i]
-        if row.max() > kmax_iMpc:
-            raise ModelDomainError("parallel k outside trained P1D coverage")
-        k_iMpc[i, :len(row)] = row
-        k_iMpc[i, len(row):] = row[-1]
-    for cutoff in (integrator.k_perp_iMpc[0], integrator.k_perp_iMpc[-1]):
-        snapshot.validate_k(np.sqrt(k_iMpc**2 + cutoff**2))
-    parameters = {
-        name: np.array([arinyo[z][name] for z in zs])[:, None, None]
-        for name in next(iter(arinyo.values()))
-    }
-    projected = P1D_Mpc(
-        linear, zs, k_iMpc, model.P3D_Mpc_kpar_kperp, parameters,
-        integrator=integrator,
-    ) * conversion[:, None]
-    if not np.all(np.isfinite(projected)) or np.any(projected <= 0):
-        raise FloatingPointError("non-finite/nonpositive Arinyo projection")
-    by_key = {key: readonly(projected[i, :lengths[i]]) for i, key in enumerate(keys)}
-    return MappingProxyType({
-        group.identifier: tuple(by_key[(z, k)] for z, k in zip(group.redshifts, group.k_ikms))
-        for group in request.groups
-    })
+    from cup1d.likelihood.external import project_arinyo_request
+    try:
+        return project_arinyo_request(request, snapshot, arinyo,
+                                      kmax_iMpc=kmax_iMpc, integrator=integrator,
+                                      model=model, linear=linear)
+    except NumericalCoverageError:
+        # A provider-coverage failure is distinct from a rejected emulator
+        # point and must remain visible to callers instead of being converted
+        # to a likelihood-domain rejection.
+        raise
+    except ValueError as error:
+        raise ModelDomainError(str(error)) from error

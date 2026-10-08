@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 import numpy as np
 import pytest
 from cup1d.likelihood.external import ExternalP1DLikelihood, PredictionContext, PredictionRequest
@@ -6,6 +7,7 @@ from lya_interface.cosmology import CobayaCosmologySnapshot
 from lya_interface.contracts import NumericalCoverageError
 from lya_interface.derived import star_parameters
 from lya_interface.parameters import ParameterRegistry, route
+from lya_interface.configuration import _flatten_parameter_sections
 
 
 class Contaminants:
@@ -119,6 +121,152 @@ def test_registry_errors():
     for bad in ({**defs,"garbage":1.}, {k:v for k,v in defs.items() if k!="igm_tau_eff_0"}, {**defs,"logA":{"prior":{"min":2.,"max":4.}}}):
         with pytest.raises(ValueError):
             ParameterRegistry(bad,["tau_eff_0"],["R_coeff_0"])
+
+
+def test_structured_parameter_sections_have_explicit_ownership():
+    flat, mapping = _flatten_parameter_sections({
+        "general": {"H0": {"value": 67.0, "units": "km/s/Mpc"}},
+        "P1D": {"p1d_metal": {"native": "metal", "prior": {"min": -1, "max": 1}}},
+        "BAO": {"ap": {"prior": {"min": .8, "max": 1.2}}},
+    })
+    assert set(flat) == {"H0", "p1d_metal", "ap"}
+    assert mapping["metal"]["section"] == "P1D"
+    assert mapping["ap"]["section"] == "BAO"
+
+
+def test_structured_parameter_rejects_native_collision():
+    with pytest.raises(ValueError, match="ambiguous"):
+        _flatten_parameter_sections({"P1D": {"a": {"native": "same"}}, "BAO": {"b": {"native": "same"}}})
+
+
+def test_shared_igm_has_no_runtime_cup1d_dependency():
+    root = Path(__file__).parents[1] / "src" / "lya_interface" / "igm"
+    for source in root.glob("*.py"):
+        text = source.read_text()
+        assert "from cup1d" not in text
+        assert "import cup1d" not in text
+
+
+def test_shared_igm_history_preserves_scalar_and_batch_contracts():
+    from lya_interface.igm.mean_flux_class import MeanFlux
+    fid = {"tau_eff_z": np.array([2., 3., 4., 5.]),
+           "tau_eff": np.array([.1, .2, .35, .55])}
+    options = {"tau_eff_ztype": "interp_lin", "tau_eff_otype": "exp",
+               "tau_eff_znodes": [2., 3., 4., 5.]}
+    model = MeanFlux(free_param_names=["tau_eff_0", "tau_eff_1", "tau_eff_2", "tau_eff_3"],
+                     fid_igm=fid, fid_vals={}, prop_coeffs=options,
+                     flat_priors={"tau_eff": [[-1., 1.]]}, Gauss_priors=None)
+    z = np.array([2.5, 3.5])
+    scalar = model.get_tau_eff(z, {f"tau_eff_{i}": 0. for i in range(4)})
+    batch = model.get_value_batch("tau_eff", z, {f"tau_eff_{i}": np.zeros(2) for i in range(4)})
+    np.testing.assert_allclose(scalar, model.fid_interp["tau_eff"](z))
+    np.testing.assert_allclose(batch, np.ones((2, 2)))
+
+
+def test_diagnostic_column_names_are_collision_free_for_distinct_floats():
+    from lya_interface.theory.forestflow import diagnostic_column_name
+    a = diagnostic_column_name("bias", 2.3)
+    b = diagnostic_column_name("bias", np.nextafter(2.3, 3.0))
+    assert a != b
+    assert a.startswith("bias_z_")
+
+
+def test_derived_output_mapping_has_units_and_exact_redshift_identity():
+    from lya_interface.theory.forestflow import ForestFlowTheory, diagnostic_column_name
+    theory = ForestFlowTheory.__new__(ForestFlowTheory)
+    theory.derived_redshifts = (2.3, np.nextafter(2.3, 3.0))
+    mapping = theory.derived_output_mapping()
+    first = diagnostic_column_name("T0_K", 2.3)
+    second = diagnostic_column_name("T0_K", np.nextafter(2.3, 3.0))
+    assert mapping[first] == {"quantity": "T0_K", "redshift": 2.3, "units": "K"}
+    assert first != second
+
+
+def test_structured_configuration_routes_component_definitions(tmp_path):
+    from lya_interface.configuration import load_configuration
+    config = tmp_path / "joint.yaml"
+    config.write_text("""
+parameters:
+  general:
+    H0: 67.0
+  P1D:
+    p1d_x: {native: x, value: 0.0}
+  BAO:
+    ap: {native: ap, value: 1.0}
+theory:
+  lya_interface.theory.forestflow.ForestFlowTheory: {}
+likelihood:
+  lya_interface.likelihoods.cup1d.Cup1DLikelihood: {}
+  lya_interface.likelihoods.vega.VegaLikelihood: {}
+""")
+    info = load_configuration(config)
+    forest = info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]
+    cup = info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]
+    vega = info["likelihood"]["lya_interface.likelihoods.vega.VegaLikelihood"]
+    assert set(forest["parameter_definitions"]) == {"H0", "p1d_x"}
+    assert cup["parameter_definitions"] == forest["parameter_definitions"]
+    assert vega["parameter_mapping"] == {"ap": "ap"}
+    assert vega["parameter_definitions"] == info["params"]
+
+
+def test_provenance_accepts_vega_ini_without_cup1d_yaml_loading(tmp_path):
+    """Vega native assets are INIs, not inputs for ``cup1d.Args``."""
+    from lya_interface.provenance import collect
+
+    ini = tmp_path / "vega.ini"
+    ini.write_text("[data sets]\nzeff = 2.3\n")
+    result = collect({"likelihood": {
+        "lya_interface.likelihoods.vega.VegaLikelihood": {
+            "native_config": str(ini),
+        }
+    }})
+    assert result["assets"] == [
+        {"path": str(ini.resolve()),
+         "sha256": __import__("hashlib").sha256(ini.read_bytes()).hexdigest()}
+    ]
+
+
+def test_forestflow_vega_mode_removes_stale_native_beta(monkeypatch):
+    """Shared bias/bias_eta must win over Vega's native beta default."""
+    import sys
+    from types import ModuleType
+    from lya_interface.likelihoods.vega import VegaLikelihood
+
+    class Backend:
+        def __init__(self, _path):
+            self.fiducial = {"z_eff": 2.3}
+            self.priors = {}
+            self.params = {"bias_LYA": -.1, "bias_eta_LYA": -.2,
+                           "beta_LYA": 1.7, "ap": 1.}
+            self.sample_params = {"limits": {"bias_LYA": [-1., 0.],
+                                               "bias_eta_LYA": [-1., 0.],
+                                               "beta_LYA": [0., 5.]}}
+            self.models = {}
+
+    module = ModuleType("vega.vega_interface")
+    module.VegaInterface = Backend
+    monkeypatch.setitem(sys.modules, "vega.vega_interface", module)
+    adapter = object.__new__(VegaLikelihood)
+    adapter.native_config = "fixture.ini"
+    adapter.parameter_definitions = {"ap": {"value": 1.}}
+    adapter.parameter_mapping = {"ap": "ap"}
+    adapter.template_h = .67
+    adapter.use_forestflow = True
+    adapter.lya_tracer = "LYA"
+    adapter.prior_policy = "reject"
+    adapter.initialize()
+    assert adapter.get_requirements() == {"forestflow_coefficients": {"redshifts": [2.3]}}
+    for name in ("bias_LYA", "bias_eta_LYA", "beta_LYA"):
+        assert name not in adapter.backend.params
+        assert name not in adapter.backend.sample_params["limits"]
+    adapter.provider = SimpleNamespace(get_result=lambda name: {
+        2.3: {"bias": -.14, "bias_eta": -.21}
+    } if name == "forestflow_coefficients" else None)
+    values = adapter.parameters_for_evaluation({"ap": 1.})
+    assert values["ap"] == 1.
+    assert values["bias_LYA"] == -.14
+    assert values["bias_eta_LYA"] == -.21
+    assert values["forestflow_dnl"] == {}
 
 
 def test_projection_analytic_normalization_convergence():
