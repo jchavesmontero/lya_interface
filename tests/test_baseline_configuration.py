@@ -59,4 +59,5 @@ def test_desi_dr1_vega_notebook_configuration_has_four_mean_flux_nodes():
     vega = info["likelihood"]["lya_interface.likelihoods.vega.VegaLikelihood"]
     assert all(f"igm_tau_eff_{index}" in info["params"] for index in range(4))
     assert forest["native_config"].endswith("native_cm2026.yaml")
-    assert set(vega["parameter_mapping"]) == {"ap", "at", "beta_hcd", "L0_hcd", "drp_QSO"}
+    assert set(vega["parameter_mapping"]) == {"ap", "at", "beta_hcd", "L0_hcd"}
+    assert vega["fixed_native_parameters"] == {"drp_QSO": 0.0}

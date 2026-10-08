@@ -220,6 +220,7 @@ def minimize_point(
     ftol=1e-6,
     verbose=True,
     report_every=100,
+    optimization_bounds=None,
 ):
     """
     Run a bounded, total-likelihood Nelder-Mead fit in the unit cube.
@@ -255,8 +256,11 @@ def minimize_point(
     Notes
     -----
     The unit cube balances tiny As against order-one coefficients. Bounds are
-    the configured Cobaya priors; scientific-domain exclusions remain infinite
-    objective values. A failed/budget-limited run is not called a best fit.
+    the configured Cobaya priors unless finite ``optimization_bounds`` are
+    explicitly supplied for otherwise unbounded parameters. Such bounds limit
+    only the numerical search box: they never replace or truncate the Cobaya
+    posterior priors. Scientific-domain exclusions remain infinite objective
+    values. A failed/budget-limited run is not called a best fit.
     All configured likelihood terms enter the objective (including optional
     BAO); ``chi2_data`` remains the P1D diagnostic when present and is ``NaN``
     in Vega-only mode, while ``minus2_loglike_total`` reports the combined
@@ -279,6 +283,17 @@ def minimize_point(
             "initial_point must define every sampled parameter exactly once"
         )
     bounds = np.asarray(model.prior.bounds(), dtype=float)
+    if optimization_bounds is not None:
+        unknown = set(optimization_bounds) - set(names)
+        if unknown:
+            raise ValueError(f"optimization bounds name unknown sampled parameters: {sorted(unknown)}")
+        for index, name in enumerate(names):
+            if name not in optimization_bounds:
+                continue
+            replacement = np.asarray(optimization_bounds[name], dtype=float)
+            if replacement.shape != (2,) or not np.all(np.isfinite(replacement)) or replacement[0] >= replacement[1]:
+                raise ValueError(f"invalid optimization bounds for {name}")
+            bounds[index] = replacement
     if bounds.shape != (len(names), 2) or not np.all(np.isfinite(bounds)):
         raise ValueError(
             "minimization requires finite bounds for every sampled parameter"
@@ -300,7 +315,7 @@ def minimize_point(
         return dict(zip(names, lower + np.asarray(x) * width))
 
     best_x = start.copy()
-    best_value = -float(np.sum(model.logposterior(initial_point).loglikes))
+    best_value = -float(np.sum(model.logposterior(initial_point, return_derived=False).loglikes))
     evaluations = 0
     if verbose:
         initial_label = (f"{initial_result.chi2_data:.6g}"
@@ -317,7 +332,7 @@ def minimize_point(
             evaluations += 1
         value = np.inf
         if np.all(np.isfinite(x)) and np.all(x >= 0) and np.all(x <= 1):
-            posterior = model.logposterior(physical(x))
+            posterior = model.logposterior(physical(x), return_derived=False)
             if np.isfinite(posterior.logpost):
                 value = -float(np.sum(posterior.loglikes))
         if np.isfinite(value) and value < best_value:
@@ -372,5 +387,5 @@ def minimize_point(
         bool(fit.success) and final_valid,
         message,
         int(fit.nfev),
-        -2 * float(np.sum(model.logposterior(point).loglikes)),
+        -2 * float(np.sum(model.logposterior(point, return_derived=False).loglikes)),
     )

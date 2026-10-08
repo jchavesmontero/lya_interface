@@ -269,6 +269,45 @@ def test_forestflow_vega_mode_removes_stale_native_beta(monkeypatch):
     assert values["forestflow_dnl"] == {}
 
 
+def test_vega_external_prior_allows_only_fixed_native_mean(monkeypatch):
+    """An internal fixed nuisance is safe only at its constant-prior mean."""
+    import sys
+    from types import ModuleType
+    from lya_interface.likelihoods.vega import VegaLikelihood
+
+    class Backend:
+        def __init__(self, _path):
+            self.fiducial = {"z_eff": 2.3}
+            self.priors = {"drp_QSO": (0., 1.)}
+            self.params = {}
+            self.sample_params = {"limits": {}}
+            self.models = {}
+
+    module = ModuleType("vega.vega_interface")
+    module.VegaInterface = Backend
+    monkeypatch.setitem(sys.modules, "vega.vega_interface", module)
+    adapter = object.__new__(VegaLikelihood)
+    adapter.native_config = "fixture.ini"
+    adapter.use_forestflow = False
+    adapter.parameter_mapping = {}
+    adapter.parameter_definitions = {}
+    adapter.fixed_native_parameters = {"drp_QSO": 0.}
+    adapter.prior_policy = "external"
+    adapter.lya_tracer = "LYA"
+    adapter.initialize()
+
+    rejected = object.__new__(VegaLikelihood)
+    rejected.native_config = "fixture.ini"
+    rejected.use_forestflow = False
+    rejected.parameter_mapping = {}
+    rejected.parameter_definitions = {}
+    rejected.fixed_native_parameters = {"drp_QSO": .1}
+    rejected.prior_policy = "external"
+    rejected.lya_tracer = "LYA"
+    with pytest.raises(ValueError, match="must equal its native Gaussian mean"):
+        rejected.initialize()
+
+
 def test_projection_analytic_normalization_convergence():
     from forestflow.statistics.p1d import P1DIntegrator
     # P3D = exp(-k_perp^2), integral exactly (exp(-a²)-exp(-b²))/(4*pi).

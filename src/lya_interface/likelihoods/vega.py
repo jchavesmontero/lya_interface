@@ -15,6 +15,7 @@ class VegaLikelihood(Likelihood):
     native_config: str | None = None
     parameter_definitions: dict = {}
     parameter_mapping: dict = {}
+    fixed_native_parameters: dict = {}
     template_h: float | None = None
     use_forestflow: bool = True
     lya_tracer: str = "LYA"
@@ -31,6 +32,10 @@ class VegaLikelihood(Likelihood):
         self.backend = VegaInterface(self.native_config)
         self.zeff = float(self.backend.fiducial["z_eff"])
         self.mapping = dict(self.parameter_mapping)
+        self.fixed_native = dict(self.fixed_native_parameters)
+        overlap = set(self.mapping.values()) & set(self.fixed_native)
+        if overlap:
+            raise ValueError(f"native Vega parameters cannot be both mapped and fixed: {sorted(overlap)}")
         self.params = {name: None for name in self.mapping}
         self.native_priors = MappingProxyType(dict(self.backend.priors))
         if self.prior_policy not in {"reject", "external"}:
@@ -38,15 +43,37 @@ class VegaLikelihood(Likelihood):
         if self.native_priors and self.prior_policy == "reject":
             raise ValueError("native Vega priors must be migrated to Cobaya and prior_policy='external'")
         if self.prior_policy == "external":
-            missing = set(self.native_priors) - set(self.mapping.values())
+            missing = (set(self.native_priors) - set(self.mapping.values())
+                       - set(self.fixed_native))
             if missing:
                 raise ValueError(f"native Vega priors have no interface mapping: {sorted(missing)}")
             inverse = {native: public for public, native in self.mapping.items()}
-            absent = [native for native in self.native_priors
-                      if not isinstance(self.parameter_definitions.get(inverse[native]), dict)
-                      or "prior" not in self.parameter_definitions[inverse[native]]]
+            absent = []
+            for native, prior in self.native_priors.items():
+                if native in self.fixed_native:
+                    continue
+                definition = self.parameter_definitions.get(inverse[native])
+                if isinstance(definition, dict) and "prior" in definition:
+                    continue
+                # A fixed native-prior parameter is permitted only at its
+                # Gaussian mean.  Its omitted prior is then a constant and
+                # cannot affect a fit; any other fixed value would silently
+                # discard a meaningful prior penalty.
+                if np.isscalar(definition) and np.isclose(float(definition), float(prior[0])):
+                    continue
+                absent.append(native)
+            for native, value in self.fixed_native.items():
+                if native not in self.native_priors:
+                    raise ValueError(f"fixed native Vega parameter has no native Gaussian prior: {native}")
+                if not np.isclose(float(value), float(self.native_priors[native][0])):
+                    raise ValueError(
+                        f"fixed native Vega parameter {native} must equal its native Gaussian mean"
+                    )
             if absent:
-                raise ValueError(f"native Vega priors are not explicitly registered in Cobaya: {sorted(absent)}")
+                raise ValueError(
+                    "native Vega priors must be sampled in Cobaya or fixed at their native mean: "
+                    f"{sorted(absent)}"
+                )
         if self.use_forestflow:
             # These Ly-alpha quantities are ForestFlow outputs in coupled
             # mode.  Remove native sampled/default entries rather than
@@ -87,9 +114,16 @@ class VegaLikelihood(Likelihood):
             h = float(self.template_h)
             k_iMpc = h * core.k_grid
             linear_mpc3 = core._pk_fid / h**3
-            corrections[name] = ArinyoModel.nonlinear_correction(
+            correction = ArinyoModel.nonlinear_correction(
                 linear_mpc3[None, :], k_iMpc[None, :], core.muk_grid, coeff
             )
+            # Vega's correlation-function integration grid reaches much
+            # higher k than the ForestFlow training use case.  There the
+            # physical exponential damping can underflow to an exact zero.
+            # Preserve that limiting prediction at machine precision while
+            # keeping the strictly-positive factor required by Vega's
+            # Ly-alpha square-root handling.
+            corrections[name] = np.maximum(correction, np.finfo(float).tiny)
         return corrections
 
     def parameters_for_evaluation(self, params_values):
@@ -101,7 +135,8 @@ class VegaLikelihood(Likelihood):
         """
         if set(params_values) != set(self.mapping):
             raise ValueError("Vega parameter routing mismatch")
-        values = {self.mapping[name]: float(value) for name, value in params_values.items()}
+        values = dict(self.fixed_native)
+        values.update({self.mapping[name]: float(value) for name, value in params_values.items()})
         if self.use_forestflow:
             coefficients = self.provider.get_result("forestflow_coefficients")
             if coefficients is None:

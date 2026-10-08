@@ -11,7 +11,6 @@ parameter_overrides:
   at: {prior: {min: 0.8, max: 1.2}, ref: 1.0, proposal: 0.02}
   beta_hcd: {prior: {dist: norm, loc: 0.5, scale: 0.09}, ref: 0.5, proposal: 0.02}
   L0_hcd: {prior: {dist: norm, loc: 5.0, scale: 2.0}, ref: 5.3, proposal: 0.1}
-  drp_QSO: {prior: {dist: norm, loc: 0.0, scale: 1.0}, ref: 0.0, proposal: 0.1}
 
 additional_likelihoods:
   lya_interface.likelihoods.vega.VegaLikelihood:
@@ -24,4 +23,7 @@ additional_likelihoods:
       at: at
       beta_hcd: beta_hcd
       L0_hcd: L0_hcd
-      drp_QSO: drp_QSO
+    # Remains an internal Vega setting, fixed at its native Gaussian mean.
+    # It is intentionally not a public/sampled joint-fit parameter.
+    fixed_native_parameters:
+      drp_QSO: 0.0
