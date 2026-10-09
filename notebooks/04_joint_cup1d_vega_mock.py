@@ -44,10 +44,23 @@ import numpy as np
 from IPython.display import display
 from cobaya.model import get_model
 
+import importlib
+import lya_interface.diagnostics as joint_diagnostics
+importlib.reload(joint_diagnostics)  # Pick up edits when this notebook is rerun.
 from lya_interface.configuration import load_configuration
 from lya_interface.derived import star_parameters
-from lya_interface.diagnostics import evaluate_components, evaluate_point, minimize_point, plot_point
+from lya_interface.diagnostics import (
+    estimate_local_errors, evaluate_components, evaluate_point, minimize_point,
+    plot_point, sample_emcee, format_goodness_of_fit, goodness_of_fit,
+    propagate_local_errors,
+)
 from lya_interface.parameters import route
+
+
+def display_figure_once(figure):
+    """Render a Matplotlib figure once in Jupyter, then remove it from pyplot."""
+    display(figure)
+    plt.close(figure)
 
 ROOT = next(
     (path for path in [Path.cwd(), *Path.cwd().parents]
@@ -171,21 +184,22 @@ def calculate_shared_theory(model, point):
 def plot_shared_coefficients(diagnostics):
     """Plot ForestFlow bias and Arinyo coefficients before data evaluation."""
     redshifts = np.array(sorted(diagnostics))
-    figure, axes = plt.subplots(1, 2, figsize=(13, 4.5), constrained_layout=True)
+    figure, axes = plt.subplots(2, 2, figsize=(13, 8), constrained_layout=True)
+    axes = axes.ravel()
     axes[0].plot(redshifts, [diagnostics[z]["bias"] for z in redshifts], "o-", label=r"$b_\delta$")
     axes[0].plot(redshifts, [diagnostics[z]["bias_eta"] for z in redshifts], "s-", label=r"$b_\eta$")
     axes[0].set(xlabel="redshift", ylabel="coefficient", title="ForestFlow bias coefficients")
     axes[0].grid(alpha=.25)
     axes[0].legend()
-    for coefficient in ("q1", "q2", "kvav", "av", "bv", "kp"):
-        axes[1].plot(
-            redshifts,
-            [diagnostics[z]["arinyo"][coefficient] for z in redshifts],
-            "o-", label=coefficient,
-        )
-    axes[1].set(xlabel="redshift", ylabel="coefficient", title="ForestFlow Arinyo coefficients")
-    axes[1].grid(alpha=.25)
-    axes[1].legend(ncol=2)
+    pairs = (("q1", "q2"), ("av", "bv"), ("kvav", "kp"))
+    for axis, (first, second) in zip(axes[1:], pairs):
+        for coefficient in (first, second):
+            axis.plot(redshifts, [diagnostics[z]["arinyo"][coefficient] for z in redshifts],
+                      "o-", label=coefficient)
+        axis.set(xlabel="redshift", ylabel="coefficient", title=f"Arinyo: {first}, {second}")
+        axis.grid(alpha=.25)
+        axis.legend()
+    axes[3].set_yscale("log")
     return figure
 
 
@@ -225,7 +239,7 @@ input_values = calculate_shared_theory(model, initial_point)
 # ``forestflow_diagnostics`` is an inspection product, not a likelihood
 # requirement, so retrieve it from the just-evaluated theory state directly.
 forestflow_diagnostics = forestflow.get_result("forestflow_diagnostics")
-display(plot_shared_coefficients(forestflow_diagnostics))
+display_figure_once(plot_shared_coefficients(forestflow_diagnostics))
 display({
     "shared_theory_seconds": perf_counter() - t0,
     "forestflow_inputs": model.provider.get_result("forestflow_p1d")["inputs"],
@@ -283,19 +297,23 @@ def vega_native_values(point):
     model.logposterior(point, return_derived=False)
     return vega.parameters_for_evaluation({name: point[name] for name in vega.mapping})
 
-def plot_vega_point(point, title):
+def plot_vega_point(point, title=None):
     """Render each configured Vega correlation against its input mock data."""
     values = vega_native_values(point)
     correlations = vega.backend.compute_model(values, run_init=False)
+    prefix = "" if title is None else title + "\n"
+    summary = prefix + format_goodness_of_fit(goodness_of_fit(model, point), multiline=True)
     for name, correlation in correlations.items():
         vega.backend.plots.plot_4wedges(
-            models=[correlation], corr_name=name, title=title,
+            models=[correlation], corr_name=name, title=None,
             mu_bin_labels=True, no_font=True,
         )
-        plt.show()
+        vega.backend.plots.fig.suptitle(summary)
+        vega.backend.plots.fig.tight_layout(rect=(0, 0, 1, .90))
+        display_figure_once(vega.backend.plots.fig)
 
 fig, axes = plot_point(model, initial_point, title="DESI DR1 cup1d: initial point")
-plt.show()
+display_figure_once(fig)
 plot_vega_point(initial_point, "Vega Y3 mock: initial point")
 
 # %% [markdown]
@@ -309,7 +327,12 @@ plot_vega_point(initial_point, "Vega Y3 mock: initial point")
 # %%
 # RUN_MINIMIZATION = False
 RUN_MINIMIZATION = True
+RUN_LOCAL_ERRORS = True
 MAX_EVALS = 350
+# To warm-restart without rebuilding the model, run after a successful fit:
+#     initial_point = dict(best_fit.point)
+# and then rerun this minimization cell. Re-run the imports cell first after
+# changing repository code so the current diagnostics module is loaded.
 # The Gaussian priors below remain unbounded in Cobaya. These are only broad,
 # finite simplex search boxes (five standard deviations); they do not change
 # the posterior or truncate either prior.
@@ -318,6 +341,7 @@ OPTIMIZATION_BOUNDS = {
     "L0_hcd": (-5.0, 15.0),
 }
 best_fit = None
+local_errors = None
 if RUN_MINIMIZATION:
     best_fit = minimize_point(
         model, initial_point, max_evals=MAX_EVALS, verbose=True, report_every=50,
@@ -330,12 +354,52 @@ if RUN_MINIMIZATION:
             "evaluations": best_fit.evaluations,
             "chi2_P1D_data": best_fit.chi2_data,
             "minus2_loglike_total": best_fit.minus2_loglike_total,
+            "P1D": None if best_fit.statistics.p1d is None else vars(best_fit.statistics.p1d),
+            "BAO": None if best_fit.statistics.bao is None else vars(best_fit.statistics.bao),
+            "joint": vars(best_fit.statistics.joint),
         }
     )
     if not best_fit.success:
         raise RuntimeError(
             "Joint minimization did not converge; inspect the bounded result only."
         )
+    if RUN_LOCAL_ERRORS:
+        local_errors = estimate_local_errors(
+            model, best_fit.point, optimization_bounds=OPTIMIZATION_BOUNDS
+        )
+        display({
+            "local_Newton_1sigma": local_errors.errors,
+            "best_fit_cosmology": {name: best_fit.point[name] for name in ("As", "ns")},
+            "note": "One-sided curvature is used automatically if a fit is at a search bound.",
+        })
+
+# %%
+initial_point = dict(best_fit.point)
+
+# %% [markdown]
+# ## Optional emcee posterior sample
+#
+# This samples the same full Cobaya posterior as the minimizer, including its
+# Gaussian priors. The finite boxes only initialize walkers; they do not clip
+# the chain. Keep this disabled for normal notebook checks.
+
+# %%
+RUN_SAMPLER = False
+EMCEE_WALKERS = 32
+EMCEE_BURNIN = 100
+EMCEE_STEPS = 500
+emcee_run = None
+if RUN_SAMPLER:
+    sampler_start = initial_point if best_fit is None else best_fit.point
+    emcee_run = sample_emcee(
+        model, sampler_start, nwalkers=EMCEE_WALKERS, burnin=EMCEE_BURNIN,
+        steps=EMCEE_STEPS, optimization_bounds=OPTIMIZATION_BOUNDS, seed=0,
+    )
+    display({
+        "parameters": emcee_run.names,
+        "chain_shape": emcee_run.chain.shape,
+        "mean_acceptance_fraction": float(np.mean(emcee_run.acceptance_fraction)),
+    })
 
 # %% [markdown]
 # ## Re-evaluate and plot the actual best point
@@ -355,7 +419,7 @@ else:
         "arinyo": best_arinyo,
     })
     fig, axes = plot_point(model, best_fit.point, title="DESI DR1 cup1d: bounded joint best point")
-    plt.show()
+    display_figure_once(fig)
     plot_vega_point(best_fit.point, "Vega Y3 mock: bounded joint best point")
 
 # %% [markdown]
@@ -367,7 +431,21 @@ else:
 # redshift, with their locations marked separately.
 
 # %%
-def report_final_point(point):
+def final_observables(point):
+    """Return Delta2star, nstar, and mean flux in stable display order."""
+    model.logposterior(point, return_derived=False)
+    cosmology = next(
+        component for component in model.theory.values()
+        if component.__class__.__name__ == "LyaCosmology"
+    ).get_lya_cosmology()
+    stars = star_parameters(cosmology)
+    diagnostics = forestflow.get_result("forestflow_diagnostics")
+    redshifts = np.array(sorted(diagnostics))
+    mean_flux = np.array([diagnostics[z]["mean_flux"] for z in redshifts])
+    return np.concatenate(([stars["Delta2star"], stars["nstar"]], mean_flux))
+
+
+def report_final_point(point, local_errors=None):
     """Print star/BAO parameters and plot mean flux on all data redshifts."""
     model.logposterior(point, return_derived=False)
     cosmology = next(
@@ -378,10 +456,15 @@ def report_final_point(point):
     diagnostics = forestflow.get_result("forestflow_diagnostics")
     redshifts = np.array(sorted(diagnostics))
     mean_flux = np.array([diagnostics[z]["mean_flux"] for z in redshifts])
+    propagated = None if local_errors is None else propagate_local_errors(
+        point, local_errors, final_observables
+    )
+    flux_error = None if propagated is None else propagated.errors[2:]
     p1d_redshifts = np.asarray(p1d.backend.get_prediction_request().redshifts)
     bao_redshifts = np.asarray([vega.zeff])
     figure, axis = plt.subplots(figsize=(7, 4))
-    axis.plot(redshifts, mean_flux, "o-", color="C0", label="shared mean-flux history")
+    axis.errorbar(redshifts, mean_flux, yerr=flux_error, fmt="o-", color="C0",
+                  capsize=3, label="shared mean-flux history")
     axis.scatter(p1d_redshifts,
                  [diagnostics[float(z)]["mean_flux"] for z in p1d_redshifts],
                  color="C1", marker="s", zorder=3, label="P1D redshifts")
@@ -394,18 +477,28 @@ def report_final_point(point):
     axis.legend()
     display({
         "Delta2star": stars["Delta2star"],
+        "Delta2star_error": None if propagated is None else propagated.errors[0],
         "nstar": stars["nstar"],
+        "nstar_error": None if propagated is None else propagated.errors[1],
         "ap": point["ap"],
+        "ap_error": None if local_errors is None else local_errors.errors["ap"],
         "at": point["at"],
+        "at_error": None if local_errors is None else local_errors.errors["at"],
         "mean_flux": dict(zip(map(float, redshifts), map(float, mean_flux))),
+        "mean_flux_error": (None if flux_error is None else
+                            dict(zip(map(float, redshifts), map(float, flux_error)))),
     })
     return figure
 
 
 final_point = initial_point if best_fit is None else best_fit.point
-display(report_final_point(final_point))
+display_figure_once(report_final_point(final_point, local_errors=local_errors))
 
 # %%
 model.close()
+
+# %%
+
+# %%
 
 # %%

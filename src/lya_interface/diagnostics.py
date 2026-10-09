@@ -175,12 +175,13 @@ def plot_point(model, point, *, residuals=False, title=None):
             )
     renderer = plot_p1d_residuals if residuals else plot_p1d_spectra
     fig, axes = renderer(bins, panels=True, fontsize=14, print_chi2=False)
-    prefix = "" if title is None else title + " — "
+    statistics = goodness_of_fit(model, point)
+    prefix = "" if title is None else title + "\n"
     fig.suptitle(
-        prefix + rf"P1D joint $\chi^2={result.chi2_data:.2f}$, $N={result.ndata}$"
+        prefix + format_goodness_of_fit(statistics, multiline=True)
     )
     fig.supxlabel(r"$k_\parallel$ [s/km]")
-    fig.tight_layout(rect=(0, 0.03, 1, 0.94))
+    fig.tight_layout(rect=(0, 0.03, 1, 0.90))
     return fig, axes
 
 
@@ -210,6 +211,78 @@ class PointFit:
     message: str
     evaluations: int
     minus2_loglike_total: float
+    statistics: object | None = None
+
+
+@dataclass(frozen=True)
+class GoodnessOfFit:
+    """Raw data chi-square, degrees of freedom, and upper-tail probability."""
+    chi2: float
+    ndata: int
+    nfit: int
+    probability: float
+
+    @property
+    def dof(self):
+        return self.ndata - self.nfit
+
+
+@dataclass(frozen=True)
+class JointGoodnessOfFit:
+    """Separate P1D, BAO, and combined goodness-of-fit summaries."""
+    p1d: GoodnessOfFit | None
+    bao: GoodnessOfFit | None
+    joint: GoodnessOfFit
+
+
+def vega_component(model):
+    """Return the optional coupled Vega likelihood, if configured."""
+    from lya_interface.likelihoods.vega import VegaLikelihood
+    return next((x for x in model.likelihood.values() if isinstance(x, VegaLikelihood)), None)
+
+
+def _gof(chi2, ndata, nfit):
+    from scipy.stats import chi2 as chi2_distribution
+    dof = int(ndata) - int(nfit)
+    return GoodnessOfFit(float(chi2), int(ndata), int(nfit),
+                         float(chi2_distribution.sf(chi2, dof)) if dof > 0 else np.nan)
+
+
+def goodness_of_fit(model, point):
+    """Return raw P1D, Vega/BAO, and joint fit probabilities.
+
+    All reported probabilities use ``N_data - N_sampled`` degrees of freedom.
+    This makes the three numbers directly comparable and avoids assigning a
+    shared cosmology parameter to just one data set.
+    """
+    components = evaluate_components(model, point)
+    nfit = len(model.parameterization.sampled_params())
+    p1d = None
+    try:
+        result, _ = evaluate_point(model, point)
+        p1d = _gof(result.chi2_data, result.ndata, nfit)
+    except (ValueError, KeyError):
+        pass
+    vega = vega_component(model)
+    bao = None
+    if vega is not None:
+        name = next(name for name, item in model.likelihood.items() if item is vega)
+        ndata = sum(data.data_size for data in vega.backend.data.values())
+        bao = _gof(-2 * components.loglikes[name], ndata, nfit)
+    joint_chi2 = sum(x.chi2 for x in (p1d, bao) if x is not None)
+    joint_ndata = sum(x.ndata for x in (p1d, bao) if x is not None)
+    return JointGoodnessOfFit(p1d, bao, _gof(joint_chi2, joint_ndata, nfit))
+
+
+def format_goodness_of_fit(statistics, *, multiline=False):
+    """Format separate data-set and combined chi-square/PTE diagnostics."""
+    def one(label, value):
+        return "" if value is None else (
+            f"chi2_{label}={value.chi2:.6g}/{value.dof}, PTE_{label}={value.probability:.4g}"
+        )
+    data_terms = "; ".join(filter(None, (one("P1D", statistics.p1d), one("BAO", statistics.bao))))
+    joint = one("joint", statistics.joint)
+    return data_terms + ("\n" if multiline and data_terms else "; ") + joint
 
 
 def minimize_point(
@@ -306,7 +379,7 @@ def minimize_point(
         raise ValueError("initial point lies outside parameter bounds")
     try:
         cup1d_component(model)
-    except ValueError:
+    except (ValueError, KeyError):
         initial_result = None
     else:
         initial_result, _ = evaluate_point(model, initial_point)
@@ -318,11 +391,11 @@ def minimize_point(
     best_value = -float(np.sum(model.logposterior(initial_point, return_derived=False).loglikes))
     evaluations = 0
     if verbose:
-        initial_label = (f"{initial_result.chi2_data:.6g}"
-                         if initial_result is not None else "n/a")
+        initial_statistics = goodness_of_fit(model, initial_point)
         print(
             f"Nelder-Mead: {len(names)} parameters, budget={max_evals}; "
-            f"initial chi2_P1D={initial_label}, -2logL_total={2 * best_value:.6g}",
+            f"initial {format_goodness_of_fit(initial_statistics)}; "
+            f"-2logL_total={2 * best_value:.6g}",
             flush=True,
         )
 
@@ -339,11 +412,8 @@ def minimize_point(
             best_x, best_value = np.array(x, copy=True), value
         if verbose and count and evaluations % report_every == 0:
             if np.isfinite(value):
-                if initial_result is None:
-                    detail = f"chi2_P1D=n/a, -2logL_total={2 * value:.6g}"
-                else:
-                    current, _ = evaluate_point(model, physical(x))
-                    detail = f"chi2_P1D={current.chi2_data:.6g}, -2logL_total={2 * value:.6g}"
+                detail = (format_goodness_of_fit(goodness_of_fit(model, physical(x)))
+                          + f", -2logL_total={2 * value:.6g}")
             else:
                 detail = "invalid trial (-2logL_total=inf)"
             print(
@@ -371,14 +441,14 @@ def minimize_point(
     final_valid = np.isfinite(objective(fit.x, count=False))
     point = physical(best_x)
     result = evaluate_point(model, point)[0] if initial_result is not None else None
+    statistics = goodness_of_fit(model, point)
     message = str(fit.message)
     if not final_valid:
         message += " Returned point invalid; retained best valid evaluation."
     if verbose:
-        final_label = f"{result.chi2_data:.6g}" if result is not None else "n/a"
         print(
             f"Finished: success={bool(fit.success) and final_valid}, evaluations={fit.nfev}; "
-            f"chi2_P1D={final_label}, -2logL_total={2 * best_value:.6g}. {message}",
+            f"{format_goodness_of_fit(statistics)}; -2logL_total={2 * best_value:.6g}. {message}",
             flush=True,
         )
     return PointFit(
@@ -388,4 +458,157 @@ def minimize_point(
         message,
         int(fit.nfev),
         -2 * float(np.sum(model.logposterior(point, return_derived=False).loglikes)),
+        statistics,
     )
+
+
+@dataclass(frozen=True)
+class LocalErrors:
+    """Finite-difference Newton covariance around a fitted physical point."""
+    errors: dict
+    covariance: np.ndarray
+    hessian: np.ndarray
+    names: tuple
+
+
+@dataclass(frozen=True)
+class PropagatedErrors:
+    """Observable covariance obtained by linear propagation of LocalErrors."""
+    values: np.ndarray
+    covariance: np.ndarray
+    errors: np.ndarray
+
+
+def propagate_local_errors(point, local_errors, evaluate, step_fraction=.25):
+    """Propagate a full local parameter covariance through an observable.
+
+    ``evaluate`` receives a physical parameter dictionary and must return a
+    one-dimensional numeric observable vector in a stable order. Central
+    finite differences use one quarter of each marginalized 1-sigma error;
+    the full covariance, including correlations, is then propagated as
+    ``J C J^T``.
+    """
+    if not 0 < step_fraction <= 1:
+        raise ValueError("step_fraction must lie in (0, 1]")
+    names = local_errors.names
+    values = np.asarray(evaluate(point), dtype=float)
+    jacobian = np.empty((values.size, len(names)))
+    for index, name in enumerate(names):
+        sigma = local_errors.errors[name]
+        if not np.isfinite(sigma) or sigma <= 0:
+            raise ValueError(f"cannot propagate unconstrained parameter {name}")
+        displacement = step_fraction * sigma
+        plus, minus = dict(point), dict(point)
+        plus[name] += displacement
+        minus[name] -= displacement
+        jacobian[:, index] = (np.asarray(evaluate(plus)) - np.asarray(evaluate(minus))) / (2 * displacement)
+    covariance = jacobian @ local_errors.covariance @ jacobian.T
+    return PropagatedErrors(values, covariance, np.sqrt(np.maximum(np.diag(covariance), 0)))
+
+
+def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3):
+    """Estimate marginalized errors from the local posterior Hessian.
+
+    This is the joint analogue of cup1d's Newton curvature estimate. It uses
+    central differences where possible and inward one-sided differences at a
+    parameter bound, all in the unit-cube coordinates of
+    :func:`minimize_point`. It includes both data terms and Cobaya priors; it
+    is a local Gaussian approximation, not a chain.
+    """
+    names = tuple(model.parameterization.sampled_params())
+    bounds = np.asarray(model.prior.bounds(), dtype=float)
+    for index, name in enumerate(names):
+        if optimization_bounds and name in optimization_bounds:
+            bounds[index] = optimization_bounds[name]
+    if not np.all(np.isfinite(bounds)) or step <= 0:
+        raise ValueError("finite optimization bounds and positive step are required")
+    lower, width = bounds[:, 0], bounds[:, 1] - bounds[:, 0]
+    center = (np.array([point[name] for name in names]) - lower) / width
+    def objective(x):
+        post = model.logposterior(dict(zip(names, lower + width * x)), return_derived=False)
+        return -float(post.logpost) if np.isfinite(post.logpost) else np.inf
+    f0 = objective(center)
+    if not np.isfinite(f0):
+        raise ValueError("cannot estimate local errors at an invalid fitted point")
+    size = len(names)
+    hessian = np.empty((size, size))
+    directions = np.where(center < step, 1., np.where(center > 1 - step, -1., 0.))
+
+    def checked(x):
+        value = objective(x)
+        if not np.isfinite(value):
+            raise ValueError("local curvature stepped outside valid posterior support")
+        return value
+
+    for i in range(size):
+        ei = np.zeros(size); ei[i] = step
+        if directions[i] == 0:
+            hessian[i, i] = (checked(center + ei) - 2*f0 + checked(center - ei)) / step**2
+        else:
+            direction = directions[i] * ei
+            hessian[i, i] = (f0 - 2*checked(center + direction) + checked(center + 2*direction)) / step**2
+        for j in range(i):
+            ej = np.zeros(size); ej[j] = step
+            if directions[i] == 0 and directions[j] == 0:
+                value = (checked(center + ei + ej) - checked(center + ei - ej)
+                         - checked(center - ei + ej) + checked(center - ei - ej)) / (4*step**2)
+            else:
+                di = ei if directions[i] == 0 else directions[i] * ei
+                dj = ej if directions[j] == 0 else directions[j] * ej
+                # Forward/inward mixed derivative. For an interior direction
+                # this remains a first-order local derivative, avoiding an
+                # invalid point across a hard posterior boundary.
+                value = (checked(center + di + dj) - checked(center + di)
+                         - checked(center + dj) + f0) / step**2
+            hessian[i, j] = hessian[j, i] = value
+    hessian = 0.5 * (hessian + hessian.T)
+    eigenvalues = np.linalg.eigvalsh(hessian)
+    tolerance = np.finfo(float).eps * size * max(1., np.max(np.abs(eigenvalues)))
+    if np.min(eigenvalues) < -tolerance:
+        raise ValueError("local curvature is not positive semidefinite; increase step or inspect the fit")
+    covariance_unit = np.linalg.pinv(hessian, hermitian=True, rtol=1.e-10)
+    covariance = covariance_unit * np.outer(width, width)
+    diagonal = np.diag(covariance)
+    if np.any(diagonal < -tolerance):
+        raise ValueError("local covariance has negative variances")
+    errors = dict(zip(names, np.sqrt(np.maximum(diagonal, 0))))
+    return LocalErrors(errors, covariance, hessian, names)
+
+
+@dataclass(frozen=True)
+class EmceeRun:
+    """In-memory joint emcee chain; no files are written by this helper."""
+    names: tuple
+    chain: np.ndarray
+    log_probability: np.ndarray
+    acceptance_fraction: np.ndarray
+
+
+def sample_emcee(model, initial_point, *, nwalkers=None, burnin=100, steps=500,
+                 optimization_bounds=None, seed=0):
+    """Sample the full Cobaya posterior with a serial emcee ensemble.
+
+    ``optimization_bounds`` seed walkers safely; they do not clip the sampled
+    posterior. Use an MPI-aware production workflow for long scientific runs.
+    """
+    import emcee
+    names = tuple(model.parameterization.sampled_params())
+    bounds = np.asarray(model.prior.bounds(), dtype=float)
+    for i, name in enumerate(names):
+        if optimization_bounds and name in optimization_bounds:
+            bounds[i] = optimization_bounds[name]
+    if not np.all(np.isfinite(bounds)):
+        raise ValueError("emcee initialization requires finite optimization bounds")
+    ndim = len(names); nwalkers = max(2 * ndim + 2, nwalkers or 0)
+    lower, width = bounds[:, 0], bounds[:, 1] - bounds[:, 0]
+    centre = (np.array([initial_point[name] for name in names]) - lower) / width
+    rng = np.random.default_rng(seed)
+    walkers = np.clip(centre + rng.normal(scale=1.e-3, size=(nwalkers, ndim)), 1.e-8, 1-1.e-8)
+    def log_probability(unit):
+        point = dict(zip(names, lower + width * unit))
+        post = model.logposterior(point, return_derived=False)
+        return float(post.logpost) if np.isfinite(post.logpost) else -np.inf
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability)
+    state = sampler.run_mcmc(walkers, burnin, progress=True)
+    sampler.reset(); sampler.run_mcmc(state, steps, progress=True)
+    return EmceeRun(names, sampler.get_chain(), sampler.get_log_prob(), sampler.acceptance_fraction)
