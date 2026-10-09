@@ -328,7 +328,7 @@ plot_vega_point(initial_point, "Vega Y3 mock: initial point")
 # RUN_MINIMIZATION = False
 RUN_MINIMIZATION = True
 RUN_LOCAL_ERRORS = True
-MAX_EVALS = 350
+MAX_EVALS = 50
 # To warm-restart without rebuilding the model, run after a successful fit:
 #     initial_point = dict(best_fit.point)
 # and then rerun this minimization cell. Re-run the imports cell first after
@@ -359,10 +359,6 @@ if RUN_MINIMIZATION:
             "joint": vars(best_fit.statistics.joint),
         }
     )
-    if not best_fit.success:
-        raise RuntimeError(
-            "Joint minimization did not converge; inspect the bounded result only."
-        )
     if RUN_LOCAL_ERRORS:
         local_errors = estimate_local_errors(
             model, best_fit.point, optimization_bounds=OPTIMIZATION_BOUNDS
@@ -372,6 +368,10 @@ if RUN_MINIMIZATION:
             "best_fit_cosmology": {name: best_fit.point[name] for name in ("As", "ns")},
             "note": "One-sided curvature is used automatically if a fit is at a search bound.",
         })
+    if not best_fit.success:
+        raise RuntimeError(
+            "Joint minimization did not converge; inspect the bounded result only."
+        )
 
 # %%
 initial_point = dict(best_fit.point)
