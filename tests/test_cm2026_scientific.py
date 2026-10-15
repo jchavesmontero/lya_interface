@@ -16,7 +16,7 @@ def test_cm2026_export_matches_native_fiducial_parameters_and_bounds():
     from cup1d.theory.factory import set_theory
     from cup1d.likelihood.parameters import set_free_likelihood_parameters
     import forestflow
-    weights = Path(forestflow.__file__).resolve().parents[1] / "data/emulator_models/forest_mpg_fix.pt"
+    weights = Path(forestflow.__file__).resolve().parents[1] / "data/emulator_models/forest_mpg_cinn.pt"
     if not weights.is_file():
         unavailable(f"missing native baseline weights {weights}")
     info = load_configuration(ROOT / "examples/cup1d_evaluate.yaml")
@@ -60,7 +60,7 @@ def test_cm2026_native_blinding_and_required_covariance():
     asset = Path(like["covariance_asset"])
     if not asset.is_file():
         # Missing calibrated covariance must not fall back to disabled error.
-        with pytest.raises(FileNotFoundError, match="l1O_cov_forest_mpg_fix"):
+        with pytest.raises(FileNotFoundError, match="l1O_cov_forest_mpg_cinn"):
             get_model(info)
     else:
         with get_model(info) as model:

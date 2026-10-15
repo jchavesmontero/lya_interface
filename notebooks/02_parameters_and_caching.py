@@ -18,7 +18,7 @@
 #
 # This notebook shows why cosmology, IGM/projection and observation-model parameters are separate Cobaya components. A nuisance change reuses the raw prediction; an IGM change reruns ForestFlow/projection but reuses cosmology; a cosmology change recomputes both.
 #
-# These examples inherit cup1d's CM2026 baseline with the `forest_mpg` alias: DESI QMLE3 data, four-node IGM histories, baseline contaminants/resolution and rebinning factor 8. Existing corrected ForestFlow weights and its calibrated covariance file are required. Nothing trains or generates covariance, and missing assets are not replaced by mocks.
+# These examples inherit cup1d's CM2026 baseline with the `forest_mpg_cinn` alias: DESI QMLE3 data, four-node IGM histories, baseline contaminants/resolution and rebinning factor 8. Existing corrected ForestFlow weights and its calibrated covariance file are required. Nothing trains or generates covariance, and missing assets are not replaced by mocks.
 #
 # Native DESI diagnostic blinding is preserved. A one-dimensional slice is not an inference result, and the 1000-realization estimator still needs a production convergence budget. See [validation and limitations](../docs/validation.md). Start with a fresh kernel and run cells in order.
 

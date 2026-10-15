@@ -51,7 +51,7 @@ theory:
     stop_at_error: true
     native_config: examples/native_demo.yaml
     parameter_definitions: *definitions
-    model_key: forest_mpg_fix
+    emulator_label: forest_mpg_cinn
     realizations: 1000
     seed: 0
     hull_factor: 1.0

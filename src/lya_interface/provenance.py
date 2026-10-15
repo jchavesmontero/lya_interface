@@ -66,10 +66,13 @@ def collect(info, model=None):
                     result["assets"].append(file_identity(options[key]))
             if name.endswith("ForestFlowTheory"):
                 import forestflow
-                key = options.get("model_key", "forest_mpg_fix")
-                if options.get("emulator_label"):
-                    from cup1d.emulator.factory import _EMULATOR_ALIASES
-                    key = _EMULATOR_ALIASES[options["emulator_label"]]
+                from forestflow.emulator.p3d_cinn import DEFAULT_EMULATOR_KEY as key
+                if options.get("emulator_label") == "forest_mpg_gp":
+                    from forestflow.emulator.loading import gp_emulator_path
+                    gp_file = Path(gp_emulator_path("forest_mpg_gp"))
+                    if gp_file.exists():
+                        result["assets"].append(file_identity(str(gp_file)))
+                    continue
                 prefix = options.get("model_path") or str(Path(forestflow.__file__).resolve().parents[1] / "data" / "emulator_models" / key)
                 for suffix in (".pt", "_metadata.npy", "_transf.npy", "_manifest.json"):
                     if Path(prefix + suffix).exists():

@@ -43,12 +43,12 @@ def unavailable(message):
 @pytest.fixture(scope="module")
 def model():
     import forestflow
-    asset = Path(forestflow.__file__).resolve().parents[1]/"data/emulator_models/forest_mpg_fix.pt"
+    asset = Path(forestflow.__file__).resolve().parents[1]/"data/emulator_models/forest_mpg_cinn.pt"
     if not asset.exists():
         unavailable(f"missing real model asset {asset}")
     from lace.configuration import get_nyx_path
     from cup1d.utils.utils import get_path_repo
-    needed = [asset.with_name("forest_mpg_fix_metadata.npy"), asset.with_name("forest_mpg_fix_transf.npy"),
+    needed = [asset.with_name("forest_mpg_cinn_metadata.npy"), asset.with_name("forest_mpg_cinn_transf.npy"),
               Path(get_nyx_path())/"IGM_histories.npy"]
     needed += [Path(get_path_repo("lace"))/"data/sim_suites/Australia20"/name for name in ("IGM_histories.npy", "mpg_emu_cosmo.npy")]
     needed += [Path(get_path_repo("cup1d"))/"data/p1d_measurements/Karacayli2022"/name for name in
@@ -173,7 +173,7 @@ def test_matching_native_inputs_linear_power_growth_and_projection(model,change)
         def __init__(self):
             self.emulator=forest.emulator
             self.emu_params=self.emulator.input_labels
-            self.emulator_label=forest.model_key
+            self.emulator_label=forest.emulator.model_key
             self.model_Arinyo=InjectedArinyo(snapshot)
             self._prediction_cache=None
 

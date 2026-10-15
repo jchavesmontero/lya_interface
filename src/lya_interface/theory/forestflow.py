@@ -26,8 +26,7 @@ class ForestFlowTheory(Theory):
     stop_at_error: bool = True
     native_config: str | None = None
     parameter_definitions: dict = {}
-    model_key: str = "forest_mpg_fix"
-    emulator_label: str | None = None
+    emulator_label: str = "forest_mpg_cinn"
     model_path: str | None = None
     transformation_path: str | None = None
     realizations: int = 1000
@@ -47,14 +46,14 @@ class ForestFlowTheory(Theory):
             If configuration, emulator aliases/assets, domain definitions, or
             bundle input/output conventions are incompatible.
         """
-        from forestflow.emulator.p3d_cinn import P3DEmulator
+        from forestflow.emulator import load_emulator
         from forestflow.statistics.p1d import P1DIntegrator
         if not self.native_config or not self.parameter_definitions:
             raise ValueError("native_config and explicit parameter_definitions are required")
         if not isinstance(self.realizations, int) or self.realizations < 1:
             raise ValueError("realizations must be a positive integer")
         if bool(self.model_path) != bool(self.transformation_path):
-            raise ValueError("custom model_path and transformation_path must be supplied together; otherwise use model_key")
+            raise ValueError("custom model_path and transformation_path must be supplied together; otherwise the default emulator is used")
         self.igm, self.registry = make_igm(self.native_config, self.parameter_definitions)
         self.mapping = self.registry.mapping("IGM")
         if not {"H0", "ombh2", "omch2", "mnu", "nnu", "omk", "nrun"} <= set(self.cosmology_domain):
@@ -63,15 +62,17 @@ class ForestFlowTheory(Theory):
             if len(bounds) != 2 or not np.all(np.isfinite(bounds)) or bounds[0] > bounds[1]:
                 raise ValueError(f"invalid supported domain for {name}")
         self.params = {k: None for k in self.mapping}
-        key = self.model_key
-        if self.emulator_label is not None:
-            # cup1d owns these aliases; do not create another alias table here.
-            from cup1d.emulator.factory import _EMULATOR_ALIASES
-            if self.emulator_label not in {"forest_mpg", "forest_mpg_old"}:
-                raise ValueError("ForestFlowTheory requires a cup1d ForestFlow emulator alias")
-            key = _EMULATOR_ALIASES[self.emulator_label]
-        self.emulator = P3DEmulator(key=None if self.model_path else key,
-            model_path=self.model_path, transf_file=self.transformation_path, Nrealizations=self.realizations)
+        if self.emulator_label not in ("forest_mpg_cinn", "forest_mpg_gp"):
+            raise ValueError("ForestFlowTheory requires emulator_label 'forest_mpg_cinn' or 'forest_mpg_gp'")
+        if self.emulator_label == "forest_mpg_gp":
+            if self.model_path:
+                raise ValueError("custom model_path/transformation_path apply only to the cINN emulator")
+            self.emulator = load_emulator("forest_mpg_gp")
+        elif self.model_path:  # custom cINN assets
+            self.emulator = load_emulator(None, model_path=self.model_path, transf_file=self.transformation_path,
+                Nrealizations=self.realizations, compile_model=True)
+        else:
+            self.emulator = load_emulator(self.emulator_label, Nrealizations=self.realizations, compile_model=True)
         required = {"Delta2_p", "n_p", "mF", "gamma", "sigT_Mpc", "kF_Mpc"}
         if not required <= set(self.emulator.input_labels) or set(self.emulator.input_labels) - required - {"alpha_p"}:
             raise ValueError("unsupported ForestFlow input labels")
@@ -244,8 +245,11 @@ class ForestFlowTheory(Theory):
                 raise ModelDomainError("outside native training pairwise hull")
             # Redshift-independent common random numbers: stable latent block
             # zero for each input, invariant under batching/order/chunking.
-            ari = self.emulator.evaluate(inputs, Nrealizations=self.realizations,
-                seed=self.seed, latent_indices=[0]*len(zs))
+            if getattr(self.emulator, "uses_sampling", True):
+                ari = self.emulator.evaluate(inputs, Nrealizations=self.realizations,
+                    seed=self.seed, latent_indices=[0]*len(zs))
+            else:  # deterministic emulator: no latent draws
+                ari = self.emulator.evaluate(inputs)
             self.calls += 1
             arinyo = {z: MappingProxyType({k: float(np.atleast_1d(ari[k])[i]) for k in self.emulator.output_labels}) for i, z in enumerate(zs)}
             diagnostics = {}

@@ -21,10 +21,10 @@ def test_cm2026_settings_and_full_parameter_registry():
         assert _serializable(getattr(actual, name)) == _serializable(getattr(baseline, name))
     for name in actual.cov_factor:
         np.testing.assert_array_equal(actual.cov_factor[name], baseline.cov_factor[name])
-    assert actual.emulator_label == forest["emulator_label"] == "forest_mpg"
+    assert actual.emulator_label == forest["emulator_label"] == "forest_mpg_cinn"
     assert like["blinding_policy"] == "native"
     import forestflow
-    assert Path(like["covariance_asset"]) == Path(forestflow.__file__).resolve().parents[1] / "data/covariance/l1O_cov_forest_mpg_fix.npy"
+    assert Path(like["covariance_asset"]) == Path(forestflow.__file__).resolve().parents[1] / "data/covariance/l1O_cov_forest_mpg_cinn.npy"
     registry = registry_for(actual, info["params"], igm, nuisance)
     assert len(registry.mapping("IGM")) == 16
     assert len(registry.mapping("nuisance")) == 35

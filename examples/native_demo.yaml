@@ -2,7 +2,7 @@
 # production analysis: public Karacayli22 only; four pivot IGM amplitudes,
 # SiIII and one HCD term; calibrated emulator covariance disabled until supplied.
 data_label: [Karacayli2022]
-emulator_label: forest_mpg
+emulator_label: forest_mpg_cinn
 z_min: 2.2
 z_max: 4.2
 kmax_ikms: 0.05

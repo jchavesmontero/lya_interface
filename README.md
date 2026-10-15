@@ -50,7 +50,7 @@ small P1D validation fixture; it is a smoke-test example, not a calibrated
 CM2026 production fit.
 
 The examples inherit cup1d's **CM2026 baseline**, changing the emulator alias
-from `lace_mpg` to `forest_mpg`. They use DESIY1_QMLE3, rebinning factor 8,
+from `lace_mpg` to `forest_mpg_cinn`. They use DESIY1_QMLE3, rebinning factor 8,
 four-node MPG-central IGM histories, the full native contaminant/resolution
 configuration, statistical covariance factor 1.05 and full emulator covariance.
 All 53 baseline parameters are sampled using exported native fiducial values
@@ -58,7 +58,7 @@ and bounds. The native YAML is a sparse override of maintained cup1d defaults;
 the Cobaya parameter export was checked against native parameter definitions.
 
 The calibrated covariance
-`ForestFlow/data/covariance/l1O_cov_forest_mpg_fix.npy` **is required** and is
+`ForestFlow/data/covariance/l1O_cov_forest_mpg_cinn.npy` **is required** and is
 currently missing locally. It is not silently disabled or replaced by latent
 scatter. Supply it before running baseline evaluation or fitting. Native DESI
 blinding offsets are applied to exported star diagnostics without changing

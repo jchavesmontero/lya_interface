@@ -21,7 +21,7 @@
 # likelihood. Both components use the same CAMB provider; no second cosmology
 # calculation or native cup1d `Analysis` is constructed.
 #
-# The configuration inherits the **CM2026 baseline with `forest_mpg`**. It
+# The configuration inherits the **CM2026 baseline with `forest_mpg_cinn`**. It
 # retains the baseline IGM histories, contaminants, resolution, rebinning and
 # calibrated covariance. The native DESI blinding remains enabled. Existing
 # scientific assets are required; no cell trains models or generates covariance.
@@ -44,7 +44,7 @@
 #
 # Set `BAO_PACKAGES_PATH` below to that directory, or leave it as `None` to use
 # Cobaya's configured default. The notebook does not download or install data.
-# It also requires `ForestFlow/data/covariance/l1O_cov_forest_mpg_fix.npy`;
+# It also requires `ForestFlow/data/covariance/l1O_cov_forest_mpg_cinn.npy`;
 # missing calibrated covariance is an error, not a reason to disable it.
 # Start with a fresh kernel and run cells in order.
 

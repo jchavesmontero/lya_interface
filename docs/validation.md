@@ -106,7 +106,7 @@ their paths, or fail when `LYA_REQUIRE_SCIENTIFIC_ASSETS=1`. No asset is generat
 
 ### CM2026 example update
 
-The new examples inherit native CM2026 defaults with `forest_mpg` instead of
+The new examples inherit native CM2026 defaults with `forest_mpg_cinn` instead of
 `lace_mpg`. Two additional real-asset checks pass: all 53 native fiducial values
 and bounds, fixed Planck18 background settings, and the frozen M(z) conversion
 table agree with native cup1d; the actual DESI metadata produces exactly the

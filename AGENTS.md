@@ -17,6 +17,6 @@ graph. cupix, Vega, and the compressed likelihood are out of scope.
 - Use apply_patch for edits. Preserve native scalar and batch return contracts.
 - Run `pytest -q -m 'not scientific'` for fast checks, then configured scientific
   tests, including actual Cobaya routing/restoration. Record exact revisions.
-- User-facing examples inherit CM2026 with forest_mpg and preserve native blinding.
+- User-facing examples inherit CM2026 with forest_mpg_cinn and preserve native blinding.
   Keep the small unblinded validation_demo separate; never substitute it for a
   baseline analysis or silently disable missing calibrated covariance.

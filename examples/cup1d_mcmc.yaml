@@ -1,4 +1,4 @@
-# CM2026 baseline with the cup1d forest_mpg alias (corrected ForestFlow bundle).
+# CM2026 baseline with the cup1d forest_mpg_cinn alias (corrected ForestFlow bundle).
 # Native fiducial values and bounds exported from cup1d's CM2026 configuration.
 # Unlike validation_demo.yaml, the calibrated ForestFlow covariance is required.
 params: &definitions
@@ -245,7 +245,7 @@ theory:
     stop_at_error: true
     native_config: examples/native_cm2026.yaml
     parameter_definitions: *definitions
-    emulator_label: forest_mpg
+    emulator_label: forest_mpg_cinn
     realizations: 1000
     seed: 0
     hull_factor: 1.15
@@ -268,7 +268,7 @@ likelihood:
     stop_at_error: true
     native_config: examples/native_cm2026.yaml
     parameter_definitions: *definitions
-    covariance_asset: ../ForestFlow/data/covariance/l1O_cov_forest_mpg_fix.npy
+    covariance_asset: ../ForestFlow/data/covariance/l1O_cov_forest_mpg_cinn.npy
     blinding_policy: native
     include_logdet: false
     # Frozen native Planck18 M(z), km/s/Mpc; used only for error covariance.
