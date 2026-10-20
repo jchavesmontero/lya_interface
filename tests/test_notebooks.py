@@ -35,20 +35,17 @@ def test_notebook_structure_and_code(path):
     ]
 
 
-def test_joint_notebook_uses_combined_configuration_and_native_diagnostics():
-    notebook = jupytext.read(NOTEBOOKS / "03_joint_p1d_desidr2_lya_bao.py")
+def test_joint_notebook_uses_dr2_vega_configuration_and_fit_workflow():
+    notebook = jupytext.read(NOTEBOOKS / "joint_DR1P1D_DR2BAO.py")
     source = "\n".join(c.source for c in notebook.cells if c.cell_type == "code")
-    tree = ast.parse(source)
+    tree = ast.parse("\n".join(line for line in source.splitlines()
+                               if not line.lstrip().startswith("%")))
     strings = {node.value for node in ast.walk(tree)
                if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-    assert "examples/cup1d_desidr2_lya_bao.yaml" in strings
-    assert "bao.desi_dr2.desi_bao_lya" in strings
-    calls = [node.func.id for node in ast.walk(tree)
-             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
-    assert calls.count("get_model") == 1
-    assert calls.count("plot_point") == 2
-    assert calls.count("minimize_point") == 1
-    assert "RUN_MINIMIZATION = False" in source
+    assert "joint_dr1p1d_forestmpggp_dr2bao" in strings
+    for call in ("Fit(CONFIG)", "fit.minimize(", "fit.save(", "Fit.from_results(",
+                 "fit.plot_triangle(", "global_ic_point("):
+        assert call in source
 
 
 def test_cup1d_vega_mock_notebook_has_compact_joint_workflow():

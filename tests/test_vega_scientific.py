@@ -29,6 +29,6 @@ def test_vega_adapter_matches_native_data_only_reference():
     adapter.lya_tracer = "LYA"
     adapter.initialize()
     point = dict(ap=1.0, at=1.0, beta_hcd=.5, L0_hcd=5.3, drp_QSO=0.0)
-    data_chi2 = adapter.backend.chi2(point, include_priors=False)
+    data_chi2 = adapter.data_chi2(point)
     assert -2 * adapter.logp(**point) == pytest.approx(data_chi2)
     assert adapter.backend.chi2(point) - data_chi2 == pytest.approx(.0225)

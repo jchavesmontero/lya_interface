@@ -1,0 +1,53 @@
+# DESI DR1 P1D (CM2026 baseline with forest_mpg_gp, see cup1d_forestmpggp_evaluate.yaml)
+# combined with the DESI DR2 Lya x Lya correlation only, fitted with Vega
+# (data_bao/dr2/fits/main_lya.ini), with the Lya x Lya block of the smoothed
+# global covariance. Lighter alternative to joint_dr1p1d_forestmpggp_dr2bao.yaml,
+# which uses all four correlations. ForestFlow, at the shared cosmology and IGM,
+# supplies the Lya bias, beta and the small-scale nonlinear correction to Vega;
+# bias_LYA and beta_LYA are therefore not free BAO parameters. The P1D-BAO
+# cross-covariance is assumed zero.
+#
+# The BAO nuisances are those sampled in the DR2 baseline (main.ini [sample]) that
+# affect Lya x Lya; the QSO ones are not sampled.
+# Flat ranges come from main.ini, else from Vega's default_values.txt; the
+# Gaussian priors of main.ini [priors] become truncated normals on those ranges,
+# as in Vega. References are the Gaussian prior means, or the main.ini
+# [parameters] values for flat priors (bias_hcd: its [sample] start value).
+interface_base: cup1d_forestmpggp_evaluate.yaml
+
+parameter_overrides:
+  ap: {prior: {min: 0.5, max: 1.5}, ref: 1.0, proposal: 0.01}
+  at: {prior: {min: 0.5, max: 1.5}, ref: 1.0, proposal: 0.01}
+  bias_hcd: {prior: {min: -1.0, max: 0.0}, ref: -0.05, proposal: 0.01}
+  bias_SiII_1190: {prior: {min: -0.5, max: 0.0}, ref: -0.0052, proposal: 0.001}
+  bias_SiII_1193: {prior: {min: -0.5, max: 0.0}, ref: -0.0024, proposal: 0.001}
+  bias_SiIII_1207: {prior: {min: -0.5, max: 0.0}, ref: -0.0074, proposal: 0.001}
+  bias_SiII_1260: {prior: {min: -0.5, max: 0.0}, ref: -0.0046, proposal: 0.001}
+  desi_inst_sys_amp: {prior: {min: 0.0, max: 0.01}, ref: 0.0001, proposal: 5e-05}
+  beta_hcd: {prior: {dist: truncnorm, a: -5.555555556, b: 50, loc: 0.5, scale: 0.09}, ref: 0.5, proposal: 0.02}
+  L0_hcd: {prior: {dist: truncnorm, a: -5, b: 10, loc: 5.0, scale: 1.0}, ref: 5.0, proposal: 0.1}
+  bias_CIV_eff: {prior: {dist: truncnorm, a: -96.2, b: 3.8, loc: -0.019, scale: 0.005}, ref: -0.019, proposal: 0.001}
+
+additional_likelihoods:
+  lya_interface.likelihoods.vega.VegaLikelihood:
+    native_config: vega_dr2_lya_forestflow_main.ini
+    template_h: 0.6736  # H0 = 67.36 in the header of Vega's Planck18/DESI-2024_z_2.33.fits.
+    use_forestflow: true
+    prior_policy: external
+    parameter_mapping:
+      ap: ap
+      at: at
+      bias_hcd: bias_hcd
+      bias_SiII_1190: 'bias_SiII(1190)'
+      bias_SiII_1193: 'bias_SiII(1193)'
+      bias_SiIII_1207: 'bias_SiIII(1207)'
+      bias_SiII_1260: 'bias_SiII(1260)'
+      desi_inst_sys_amp: desi_inst_sys_amp
+      beta_hcd: beta_hcd
+      L0_hcd: L0_hcd
+      bias_CIV_eff: 'bias_CIV(eff)'
+    # QSO-only parameters do not enter Lya x Lya. Their native Gaussian priors
+    # are kept fixed at the prior means, so they add a constant only.
+    fixed_native_parameters:
+      bias_QSO: 3.4
+      drp_QSO: 0.0

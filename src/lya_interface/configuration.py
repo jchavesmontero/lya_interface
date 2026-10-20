@@ -108,7 +108,7 @@ def load_configuration(path):
                                               for key, value in definitions.items()))
                     if interface_mapping is None and not subset_matches:
                         raise ValueError("component registry and public params definitions differ")
-                for key in ("native_config", "covariance_asset", "model_path", "transformation_path"):
+                for key in ("native_config", "covariance_asset", "model_path", "transformation_path", "metal_model"):
                     if options.get(key) and not Path(options[key]).is_absolute():
                         candidates = [path.parent / options[key], path.parent.parent / options[key]]
                         # Config-relative assets first; repository-relative

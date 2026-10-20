@@ -97,5 +97,6 @@ class Cup1DLikelihood(Likelihood):
         prediction = self.provider.get_result("forestflow_p1d")
         if not prediction["valid"]:
             return -np.inf
-        result = self.backend.evaluate_from_p1d(prediction["powers"], prediction["context"], route(params_values, self.mapping))
+        result = self.backend.evaluate_from_p1d(prediction["powers"], prediction["context"], route(params_values, self.mapping),
+                                                prediction.get("metal_moments"))
         return result.loglike

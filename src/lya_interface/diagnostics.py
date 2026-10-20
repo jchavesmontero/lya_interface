@@ -118,11 +118,12 @@ def evaluate_point(model, point):
     likelihood = cup1d_component(model)
     values = model.parameterization.input_params()
     nuisance = route({k: values[k] for k in likelihood.mapping}, likelihood.mapping)
+    moments = prediction.get("metal_moments")
     result = likelihood.backend.evaluate_from_p1d(
-        prediction["powers"], prediction["context"], nuisance
+        prediction["powers"], prediction["context"], nuisance, moments
     )
     powers = likelihood.backend.apply_observation_model(
-        prediction["powers"], prediction["context"], nuisance
+        prediction["powers"], prediction["context"], nuisance, moments
     )
     return result, powers
 
@@ -487,6 +488,7 @@ def minimize_point(
         )
 
     last_report = time.perf_counter()
+    best_report = [None, ""]  # best value and its formatted statistics
     stall_reference = [2 * best_value, 0]  # best -2logL at last reset, evaluation count
 
     class _Stalled(Exception):
@@ -510,13 +512,14 @@ def minimize_point(
                 raise _Stalled
         if verbose and count and evaluations % report_every == 0:
             elapsed = time.perf_counter() - last_report
-            if np.isfinite(value):
-                detail = format_goodness_of_fit(goodness_of_fit(model, physical(x)))
-            else:
-                detail = "invalid trial"
+            # Report the best point so far, not the current trial; recompute
+            # its statistics only when it has changed since the last report.
+            if best_report[0] != best_value:
+                best_report[:] = [best_value,
+                                  format_goodness_of_fit(goodness_of_fit(model, physical(best_x)))]
             print(
-                f"Evaluation {evaluations} ({elapsed:.1f} s): {detail}; "
-                f"best -2logL_total={2 * best_value:.6g}",
+                f"Evaluation {evaluations} ({elapsed:.1f} s): best {best_report[1]}; "
+                f"-2logL_total={2 * best_value:.6g}",
                 flush=True,
             )
             last_report = time.perf_counter()
@@ -730,6 +733,161 @@ def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=Non
     return fig, ax, summary
 
 
+def plot_vega_point(model, point, title=None):
+    """Plot every Vega correlation against its data in four mu wedges.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Graph with a coupled Vega likelihood.
+    point : mapping
+        Physical sampled values.
+    title : str, optional
+        Prefix of the goodness-of-fit title.
+
+    Returns
+    -------
+    list of matplotlib.figure.Figure
+        One figure per correlation, from Vega's maintained wedge plotter, using
+        exactly the native parameters of the data likelihood.
+    """
+    vega = vega_component(model)
+    if vega is None:
+        raise ValueError("the model has no Vega likelihood")
+    model.logposterior(point, return_derived=False)
+    values = vega.parameters_for_evaluation({name: point[name] for name in vega.public_parameters})
+    correlations = vega.backend.compute_model(values, run_init=False)
+    prefix = "" if title is None else title + "\n"
+    summary = prefix + format_goodness_of_fit(goodness_of_fit(model, point), multiline=True)
+    figures = []
+    for name, correlation in correlations.items():
+        vega.backend.plots.plot_4wedges(models=[correlation], corr_name=name, title=None,
+                                        mu_bin_labels=True, no_font=True)
+        figure = vega.backend.plots.fig
+        figure.suptitle(f"{name}: {summary}")
+        figure.tight_layout(rect=(0, 0, 1, .88))
+        figures.append(figure)
+    return figures
+
+
+_STAR_LABELS = {"Delta2star": r"$\Delta^2_\star$", "nstar": r"$n_\star$"}
+
+
+def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "nstar", "ap", "at"),
+                        axes=None, label=None, color=None, levels=(0.6827, 0.9545),
+                        unblind=False, labels=None):
+    """Triangle plot of local-error ellipses for star and sampled parameters.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Graph containing a ``LyaCosmology`` component.
+    point : mapping
+        Physical sampled values at the minimum.
+    local_errors : LocalErrors
+        Local parameter covariance at ``point``.
+    parameters : sequence of str, default=('Delta2star', 'nstar', 'ap', 'at')
+        ``'Delta2star'``/``'nstar'`` (blinded unless ``unblind``) and/or any
+        sampled parameter names.
+    axes : numpy.ndarray, optional
+        Square axes array from a previous call, to overlay several fits.
+    label, color, levels, unblind
+        As in :func:`plot_star_ellipse`.
+    labels : mapping, optional
+        Axis labels by parameter name; defaults to LaTeX for star parameters.
+
+    Returns
+    -------
+    fig, axes
+        Figure and ``(n, n)`` axes array (upper triangle hidden).
+    summary : dict
+        Best-fit values, marginal errors, the correlation matrix and the
+        :class:`PropagatedErrors`.
+
+    Notes
+    -----
+    The full parameter covariance is propagated to the requested quantities
+    (sampled parameters enter with unit derivatives), keeping all correlations.
+    Diagonal panels show the Gaussian marginal of each quantity.
+    """
+    import matplotlib.pyplot as plt
+    from scipy.stats import chi2 as chi2_distribution
+
+    parameters = tuple(parameters)
+    stars_needed = any(name in _STAR_LABELS for name in parameters)
+
+    def observables(p):
+        stars = dict(zip(("Delta2star", "nstar"), star_values(model, p, unblind))) if stars_needed else {}
+        return np.array([stars[name] if name in stars else p[name] for name in parameters])
+
+    propagated = propagate_local_errors(point, local_errors, observables)
+    values, covariance, errors = propagated.values, propagated.covariance, propagated.errors
+    blinded = stars_needed and is_blinded(model) and not unblind
+    labels = dict(labels or {})
+    for name in parameters:
+        default = _STAR_LABELS.get(name, name.replace("_", r"\_"))
+        if name in _STAR_LABELS and blinded:
+            default += " (blinded)"
+        labels.setdefault(name, default)
+    size = len(parameters)
+    if axes is None:
+        fig, axes = plt.subplots(size, size, figsize=(2.6 * size, 2.6 * size), squeeze=False)
+        for i in range(size):
+            for j in range(i + 1, size):
+                axes[i, j].set_visible(False)
+    else:
+        fig = axes[0, 0].figure
+    if color is None:
+        color = axes[0, 0]._get_lines.get_next_color()
+    angle = np.linspace(0, 2 * np.pi, 200)
+    unit_circle = np.vstack([np.cos(angle), np.sin(angle)])
+    for i in range(size):
+        ax = axes[i, i]
+        grid = values[i] + errors[i] * np.linspace(-4, 4, 200)
+        ax.plot(grid, np.exp(-0.5 * ((grid - values[i]) / errors[i]) ** 2), color=color)
+        ax.set_yticks([])
+        ax.set_title(f"{labels[parameters[i]]} = {values[i]:.4g} $\\pm$ {errors[i]:.2g}", fontsize=9)
+        for j in range(i):
+            ax = axes[i, j]
+            block = covariance[np.ix_([j, i], [j, i])]
+            eigenvalues, eigenvectors = np.linalg.eigh(block)
+            for level, style in zip(levels, ("-", "--", ":", "-.")):
+                radius = np.sqrt(chi2_distribution.ppf(level, 2) * np.maximum(eigenvalues, 0))
+                ellipse = eigenvectors @ (radius[:, None] * unit_circle)
+                ax.plot(values[j] + ellipse[0], values[i] + ellipse[1], style, color=color)
+            ax.plot(values[j], values[i], "x", color=color, ms=8, mew=2)
+    for i in range(size):
+        for j in range(i + 1):
+            if i == size - 1:
+                axes[i, j].set_xlabel(labels[parameters[j]])
+            else:
+                axes[i, j].tick_params(labelbottom=False)
+            if j == 0 and i > 0:
+                axes[i, j].set_ylabel(labels[parameters[i]])
+            elif j > 0:
+                axes[i, j].tick_params(labelleft=False)
+    prefix = "" if label is None else label + ", "
+    handles = [plt.Line2D([], [], color=color, ls=style, label=f"{prefix}{100 * level:.0f}%")
+               for level, style in zip(levels, ("-", "--", ":", "-."))]
+    handles.append(plt.Line2D([], [], color=color, marker="x", ls="", mew=2, label=f"{prefix}MLE"))
+    legend_ax = axes[0, size - 1] if size > 1 else axes[0, 0]
+    if size > 1:
+        legend_ax.set_visible(True)
+        legend_ax.axis("off")
+        previous = legend_ax.get_legend()
+        if previous is not None:
+            handles = previous.legend_handles + handles
+    legend_ax.legend(handles=handles, loc="upper right", fontsize=9)
+    fig.tight_layout()
+    summary = {
+        "values": dict(zip(parameters, map(float, values))),
+        "errors": dict(zip(parameters, map(float, errors))),
+        "correlation": covariance / np.outer(errors, errors),
+        "blinded": bool(blinded), "propagated": propagated,
+    }
+    return fig, axes, summary
+
+
 def _gauss_newton_hessian(model, names, lower, width, center, step):
     """Unit-cube posterior curvature ``sum J^T C^-1 J`` plus the prior curvature.
 
@@ -782,7 +940,7 @@ def _gauss_newton_hessian(model, names, lower, width, center, step):
         else:
             model.logposterior(point, return_derived=False)
         if vega is not None:
-            values = vega.parameters_for_evaluation({n: point[n] for n in vega.mapping})
+            values = vega.parameters_for_evaluation({n: point[n] for n in vega.public_parameters})
             cf = vega.backend.compute_model(values, run_init=False)
             pieces.append(np.concatenate([np.asarray(cf[n])[vega.backend.data[n].model_mask]
                                           for n in vega.backend.corr_items]))

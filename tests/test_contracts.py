@@ -255,7 +255,8 @@ def test_forestflow_vega_mode_removes_stale_native_beta(monkeypatch):
     adapter.lya_tracer = "LYA"
     adapter.prior_policy = "reject"
     adapter.initialize()
-    assert adapter.get_requirements() == {"forestflow_coefficients": {"redshifts": [2.3]}}
+    assert adapter.get_requirements() == {"forestflow_coefficients": {"redshifts": [2.3]},
+                                          "lya_cosmology": {"redshifts": [2.3]}}
     for name in ("bias_LYA", "bias_eta_LYA", "beta_LYA"):
         assert name not in adapter.backend.params
         assert name not in adapter.backend.sample_params["limits"]

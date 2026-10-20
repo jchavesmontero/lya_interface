@@ -1,22 +1,24 @@
 # CM2026 baseline with the cup1d forest_mpg_cinn alias (corrected ForestFlow bundle).
-# Native fiducial values and bounds exported from cup1d's CM2026 configuration.
+# Fixed cosmology: LaCE/cup1d Planck18_noBAO (Planck 2018 TT,TE,EE+lowE+lensing,
+# mnu = 0.06 eV), the cosmology of the Vega DR2 template; As/ns references and
+# bounds exported from cup1d with fid_cosmo_label: Planck18_noBAO.
 # Unlike validation_demo.yaml, the calibrated ForestFlow covariance is required.
 params: &definitions
-  H0: 67.66
-  ombh2: 0.02242
-  omch2: 0.11933
-  mnu: 0.0
+  H0: 67.36
+  ombh2: 0.02237
+  omch2: 0.12
+  mnu: 0.06  # one massive neutrino (CAMB/LaCE default), as Planck18_noBAO
   nnu: 3.044  # Native LaCE/CAMB Planck18 default for the supported revision.
   omk: 0.0
   tau: 0.0  # Native LaCE Planck18 reionization setting.
   nrun: 0.0
   As:
-    prior: {min: 1.024705906370553e-9, max: 3.431002106662184e-9}
-    ref: 2.105209331337507e-9
+    prior: {min: 1.0296420289934597e-9, max: 3.448569217524914e-9}
+    ref: 2.0989031673191437e-9  # exp(3.044) 1e-10
     proposal: 2e-11
   ns:
-    prior: {min: 0.6910085808836266, max: 1.2725147181395122}
-    ref: 0.9665
+    prior: {min: 0.6903793292491252, max: 1.2714659654153428}
+    ref: 0.9649
     proposal: 0.001
   igm_tau_eff_0:
     prior: {min: -0.22092695416564634, max: 0.2240260715592276}
@@ -232,7 +234,7 @@ theory:
       Want_CMB: false
       nonlinear: false
       neutrino_hierarchy: degenerate
-      num_massive_neutrinos: 0
+      num_massive_neutrinos: 1
       pivot_scalar: 0.05
       pivot_tensor: 0.05
   lya_interface.theory.lya_cosmology.LyaCosmology:
@@ -252,17 +254,24 @@ theory:
     enforce_training_hull: false  # Temporary exploratory override: permits extrapolation.
     cosmology_domain:
       H0: [65.0, 70.0]
-      ombh2: [0.02242, 0.02242]
-      omch2: [0.11933, 0.11933]
-      mnu: [0.0, 0.0]
+      ombh2: [0.02237, 0.02237]
+      omch2: [0.12, 0.12]
+      mnu: [0.06, 0.06]
       nnu: [3.044, 3.044]
       omk: [0.0, 0.0]
       nrun: [0.0, 0.0]
+    # Split Gauss-Legendre in ln k at fixed k_par (cup1d's native rule), split at
+    # k = 0.4/Mpc. On DESI DR1 (forest_mpg_gp, P1D and Kaiser-metal moments, 4
+    # points) |delta chi2| <= 0.025 against a converged reference. The high-k
+    # segment needs 32 nodes, and k_perp_min = 1e-3 /Mpc biases chi2 by ~0.25
+    # (the strip down to 1e-4 is ~1e-4 of P1D at the lowest k).
     projection:
-      k_perp_min_iMpc: 0.001
+      rule: k_mu
+      k_perp_min_iMpc: 0.0001
       k_perp_max_iMpc: 100.0
-      n_k_perp: 96
-      method: simpson
+      k_split_iMpc: 0.4
+      n_low: 32
+      n_high: 32
 likelihood:
   lya_interface.likelihoods.cup1d.Cup1DLikelihood:
     stop_at_error: true
@@ -271,19 +280,19 @@ likelihood:
     covariance_asset: ../ForestFlow/data/covariance/l1O_cov_forest_mpg_cinn.npy
     blinding_policy: native
     include_logdet: false
-    # Frozen native Planck18 M(z), km/s/Mpc; used only for error covariance.
+    # Frozen native Planck18_noBAO M(z) = H(z)/(1+z), km/s/Mpc; used only for error covariance.
     fiducial_M:
-      2.2: 69.6338462642617
-      2.4: 71.3980936237748
-      2.6: 73.15903561399239
-      2.8: 74.90909995247455
-      3.0: 76.64326102808273
-      3.2: 78.35824126355129
-      3.4: 80.05197318573427
-      3.6: 81.72323229329216
-      3.8: 83.37138351608837
-      4.0: 84.99620428195092
-      4.2: 86.59775991679038
+      2.2: 69.8826810086643
+      2.4: 71.66207515037594
+      2.6: 73.43676334452594
+      2.8: 75.19943425105039
+      3.0: 76.94526232942296
+      3.2: 78.67112528473942
+      3.4: 80.3750775941316
+      3.6: 82.05599161821358
+      3.8: 83.71331005574295
+      4.0: 85.3468734171004
+      4.2: 86.95679872302013
 output: output/cm2026_forest_mpg_mle
 sampler:
   minimize:

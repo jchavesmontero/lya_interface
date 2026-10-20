@@ -3,7 +3,8 @@
 from lya_interface.contracts import ModelDomainError, NumericalCoverageError
 
 
-def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_iMpc):
+def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_iMpc,
+                    moments=False, n_k=None):
     """
     Project unique (z, k) requests together, preserving ragged output grids.
 
@@ -23,12 +24,18 @@ def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_i
         Native transverse quadrature and integration geometry.
     kmax_iMpc : float
         Maximum admitted parallel wavenumber in inverse Mpc.
+    moments : bool, default=False
+        Also return the Kaiser metal moments, from the same single pass.
+    n_k : int, optional
+        Project on ``n_k`` log-spaced k per row and interpolate, as cup1d's
+        ``n_k_emu`` (``cup1d.likelihood.external.project_fused``).
 
     Returns
     -------
-    mapping
+    mapping or tuple
         Immutable dataset-indexed tuples of P1D arrays in km/s, retaining
-        the requested redshift ordering and individual grid lengths.
+        the requested redshift ordering and individual grid lengths; with
+        ``moments``, the pair ``(p1d, metal_moments)``.
 
     Raises
     ------
@@ -44,11 +51,13 @@ def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_i
     The single native P1D projection integrates only along the transverse
     axis; parameter arrays have explicit singleton k and transverse axes.
     """
-    from cup1d.likelihood.external import project_arinyo_request
+    from cup1d.likelihood.external import project_fused
     try:
-        return project_arinyo_request(request, snapshot, arinyo,
-                                      kmax_iMpc=kmax_iMpc, integrator=integrator,
-                                      model=model, linear=linear)
+        powers, metal_moments = project_fused(request, snapshot, arinyo,
+                                              kmax_iMpc=kmax_iMpc, integrator=integrator,
+                                              model=model, linear=linear,
+                                              moments=moments, n_k=n_k)
+        return (powers, metal_moments) if moments else powers
     except NumericalCoverageError:
         # A provider-coverage failure is distinct from a rejected emulator
         # point and must remain visible to callers instead of being converted

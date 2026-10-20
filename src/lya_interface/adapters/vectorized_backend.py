@@ -14,13 +14,19 @@ class VectorizedP1DLikelihood(ExternalP1DLikelihood):
     The inherited correlated likelihood contraction is already array based.
     """
 
-    def apply_observation_model(self, p1d_lya_kms, context, nuisance_parameters):
-        """Apply cup1d's columnar response kernels to one Cobaya point."""
+    def apply_observation_model(self, p1d_lya_kms, context, nuisance_parameters,
+                                metal_moments=None):
+        """Apply cup1d's columnar response kernels to one Cobaya point.
+
+        The Kaiser metal model (which needs ``metal_moments``) has no columnar
+        kernel and uses the native scalar path.
+        """
         if context.request_id != self.request.identity or set(p1d_lya_kms) != set(self.data):
             raise ValueError("prediction request identity or dataset mismatch")
         # Configurations without nuisance parameters retain the native path.
-        if not nuisance_parameters:
-            return super().apply_observation_model(p1d_lya_kms, context, nuisance_parameters)
+        if not nuisance_parameters or metal_moments is not None:
+            return super().apply_observation_model(p1d_lya_kms, context, nuisance_parameters,
+                                                   metal_moments)
         columns = {name: np.array([value], dtype=float)
                    for name, value in nuisance_parameters.items()}
         index = {z: i for i, z in enumerate(context.redshifts)}

@@ -44,7 +44,7 @@ def test_minimization_returns_real_fitted_point_and_reports_budget_failure(capsy
         fit = minimize_point(model, point, max_evals=300, report_every=2)
         output = capsys.readouterr().out
         assert "Evaluation 2 (" in output
-        assert "chi2_P1D=" in output and "best -2logL_total=" in output
+        assert "best chi2_P1D=" in output and "-2logL_total=" in output
         assert "Finished:" in output
         assert fit.success
         assert fit.chi2_data <= initial.chi2_data + 1e-8

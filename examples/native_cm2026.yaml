@@ -1,3 +1,11 @@
-# Inherit cup1d's CM2026 baseline without changing any scientific setting.
+# Inherit cup1d's CM2026 baseline; the fiducial cosmology is Planck18_noBAO,
+# the cosmology of the Vega DR2 template, instead of CM2026's Planck18.
 # Args.from_yaml resolves the maintained CM2026 defaults for sparse overrides.
+# Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
+fid_cosmo_label: Planck18_noBAO
 emulator_label: forest_mpg_cinn
+# 32 instead of CM2026's 8: |dchi2| <= 0.044 vs 128 on DR1 (8: up to 1.5).
+k_rebin_factor: 32
+# Project the P1D on 64 log-spaced k per redshift and interpolate (as native
+# cup1d's n_k_emu): |dchi2| <= 0.0033 on DR1 against every k, ~17x faster.
+n_k_emu: 64

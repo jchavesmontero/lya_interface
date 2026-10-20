@@ -1,0 +1,65 @@
+# native_cm2026_forestmpggp.yaml with the line-of-sight Kaiser silicon model
+# (cup1d metal_model_type: Kaiser) instead of the CM2026 silicon templates.
+# Like the DR1 metal and HCD parameters, the magnitude of each silicon flux bias
+# (ln|b|) and each species' line-of-sight decorrelation (ln sigma/km/s) have two
+# nodes interpolated linearly in z (exp output, power-law-like evolution).
+# beta_SiIII and beta_SiII stay fixed at 0.5 (see the _beta variant to free them).
+# Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
+fid_cosmo_label: Planck18_noBAO
+emulator_label: forest_mpg_gp
+n_k_emu: 64
+# 32: |dchi2| <= 0.043 vs 128 on DR1 (<= 0.018 near the fit); 16: up to 0.5.
+k_rebin_factor: 32
+cosmo_prior_nsigma: 2.0
+fid_cont:
+  metal_model_type: Kaiser
+  n_f_Lya_SiIII: 0
+  f_Lya_SiIII_ztype: pivot
+  f_Lya_SiIII_fixed: true
+  n_s_Lya_SiIII: 0
+  s_Lya_SiIII_ztype: pivot
+  s_Lya_SiIII_fixed: true
+  n_f_Lya_SiII: 0
+  f_Lya_SiII_ztype: pivot
+  f_Lya_SiII_fixed: true
+  n_s_Lya_SiII: 0
+  s_Lya_SiII_ztype: pivot
+  s_Lya_SiII_fixed: true
+  n_f_SiIIa_SiIIb: 0
+  f_SiIIa_SiIIb_ztype: pivot
+  f_SiIIa_SiIIb_fixed: true
+  n_s_SiIIa_SiIIb: 0
+  s_SiIIa_SiIIb_ztype: pivot
+  s_SiIIa_SiIIb_fixed: true
+  n_f_SiIIa_SiIII: 0
+  f_SiIIa_SiIII_ztype: pivot
+  f_SiIIa_SiIII_fixed: true
+  n_f_SiIIb_SiIII: 0
+  f_SiIIb_SiIII_ztype: pivot
+  f_SiIIb_SiIII_fixed: true
+  n_b_SiIII: 2
+  b_SiIII_ztype: interp_lin
+  b_SiIII_otype: exp
+  b_SiIII_fixed: false
+  n_b_SiIIa: 2
+  b_SiIIa_ztype: interp_lin
+  b_SiIIa_otype: exp
+  b_SiIIa_fixed: false
+  n_b_SiIIb: 2
+  b_SiIIb_ztype: interp_lin
+  b_SiIIb_otype: exp
+  b_SiIIb_fixed: false
+  n_b_SiIIc: 2
+  b_SiIIc_ztype: interp_lin
+  b_SiIIc_otype: exp
+  b_SiIIc_fixed: false
+  n_sig_SiIII: 2
+  sig_SiIII_ztype: interp_lin
+  sig_SiIII_otype: exp
+  sig_SiIII_fixed: false
+  n_sig_SiII: 2
+  sig_SiII_ztype: interp_lin
+  sig_SiII_otype: exp
+  sig_SiII_fixed: false
+  n_beta_SiIII: 0
+  n_beta_SiII: 0

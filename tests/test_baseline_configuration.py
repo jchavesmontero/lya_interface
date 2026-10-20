@@ -15,10 +15,14 @@ def test_cm2026_settings_and_full_parameter_registry():
     like = info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]
     actual, igm, nuisance = native_configuration(forest["native_config"])
     baseline = Args.from_yaml(Path(get_path_repo("cup1d")) / "configs/cm2026/cm2026_base.yaml", verbose=False)
-    for name in ("data_label", "z_min", "z_max", "kmax_ikms", "k_rebin_factor",
-                 "fid_cosmo_label", "fid_igm", "fid_cont", "fid_syst",
+    for name in ("data_label", "z_min", "z_max", "kmax_ikms",
+                 "fid_igm", "fid_cont", "fid_syst",
                  "ic_correction", "cov_syst_type", "emu_cov_type"):
         assert _serializable(getattr(actual, name)) == _serializable(getattr(baseline, name))
+    # Intentional differences: the fiducial cosmology of the Vega DR2 template,
+    # and a converged rebinning factor (CM2026's 8 is off by up to 1.5 in chi2).
+    assert actual.fid_cosmo_label == "Planck18_noBAO"
+    assert actual.k_rebin_factor == 32
     for name in actual.cov_factor:
         np.testing.assert_array_equal(actual.cov_factor[name], baseline.cov_factor[name])
     assert actual.emulator_label == forest["emulator_label"] == "forest_mpg_cinn"

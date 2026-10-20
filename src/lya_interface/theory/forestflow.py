@@ -36,6 +36,7 @@ class ForestFlowTheory(Theory):
     enforce_training_hull: bool = True
     cosmology_domain: dict = {}
     derived_redshifts: list = []
+    n_k_projection: int | None = None
 
     def initialize(self):
         """Load IGM models, emulator bundle, and native P1D integrator.
@@ -47,7 +48,6 @@ class ForestFlowTheory(Theory):
             bundle input/output conventions are incompatible.
         """
         from forestflow.emulator import load_emulator
-        from forestflow.statistics.p1d import P1DIntegrator
         if not self.native_config or not self.parameter_definitions:
             raise ValueError("native_config and explicit parameter_definitions are required")
         if not isinstance(self.realizations, int) or self.realizations < 1:
@@ -55,6 +55,15 @@ class ForestFlowTheory(Theory):
         if bool(self.model_path) != bool(self.transformation_path):
             raise ValueError("custom model_path and transformation_path must be supplied together; otherwise the default emulator is used")
         self.igm, self.registry = make_igm(self.native_config, self.parameter_definitions)
+        from lya_interface.adapters.cup1d_backend import native_configuration
+        # The Kaiser metal model of the P1D likelihood needs k_perp moments
+        # from the same projection; compute them only when it is selected.
+        native_args = native_configuration(self.native_config)[0]
+        self.metal_moments = native_args.fid_cont.get("metal_model_type") == "Kaiser"
+        # As native cup1d's n_k_emu: project on this many log-spaced k per
+        # redshift and interpolate to the rebinning grid (None: every k).
+        self.n_k = (self.n_k_projection if self.n_k_projection is not None
+                    else getattr(native_args, "n_k_emu", None))
         self.mapping = self.registry.mapping("IGM")
         if not {"H0", "ombh2", "omch2", "mnu", "nnu", "omk", "nrun"} <= set(self.cosmology_domain):
             raise ValueError("declare the admitted background, radiation, neutrino and running domain explicitly")
@@ -82,7 +91,10 @@ class ForestFlowTheory(Theory):
             raise ValueError("native training-hull assets use kp=0.7 /Mpc; a different pivot needs matching domain assets")
         if set(self.emulator.list_sim_cube) != {f"mpg_{i}" for i in range(30)}:
             raise ValueError("this domain bridge requires the full MPG cube; held-out/reduced/other suites need matching training-domain assets")
-        self.integrator = P1DIntegrator(**self.projection)
+        from cup1d.likelihood.external import make_integrator
+        # ``rule: k_mu`` selects the split Gauss-Legendre ln k rule (cup1d's
+        # native default); otherwise the ln k_perp rule.
+        self.integrator = make_integrator(self.projection)
         self.derived_redshifts = tuple(float(z) for z in self.derived_redshifts)
         if len(set(self.derived_redshifts)) != len(self.derived_redshifts):
             raise ValueError("derived_redshifts must be unique")
@@ -278,13 +290,19 @@ class ForestFlowTheory(Theory):
             state["forestflow_coefficients"] = MappingProxyType(arinyo)
             state["forestflow_diagnostics"] = MappingProxyType(diagnostics)
             if self.request is not None:
-                powers = project_request(
+                # One pass for the Lya P1D and, with the Kaiser metal model,
+                # its metal moments; optionally on a coarse k grid.
+                projected = project_request(
                     self.request, snapshot, model, linear, arinyo, self.integrator,
                     self.emulator.kmax_1d_iMpc,
+                    moments=getattr(self, "metal_moments", False),
+                    n_k=getattr(self, "n_k", None),
                 )
+                powers, moments = projected if getattr(self, "metal_moments", False) else (projected, None)
                 context = PredictionContext(self.request.identity, zs, tuple(flux), tuple(M))
                 state["forestflow_p1d"] = MappingProxyType(dict(valid=True, powers=powers, context=context,
-                    inputs=tuple(MappingProxyType(r) for r in inputs), cosmology_id=snapshot.identity))
+                    inputs=tuple(MappingProxyType(r) for r in inputs), cosmology_id=snapshot.identity,
+                    metal_moments=moments))
             else:
                 state["forestflow_p1d"] = MappingProxyType(dict(valid=True, powers=None, context=None,
                     inputs=tuple(MappingProxyType(r) for r in inputs), cosmology_id=snapshot.identity))

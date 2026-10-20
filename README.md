@@ -138,11 +138,12 @@ as the command-line demonstration; none retrains or writes scientific assets.
 - [Parameters and caching](notebooks/02_parameters_and_caching.py): change
   nuisance, IGM and cosmology parameters, verify dependency reuse and cached
   restoration, and plot a small conditional likelihood slice.
-- [Joint P1D + DESI DR2 Lyα BAO](notebooks/03_joint_p1d_desidr2_lya_bao.py):
-  evaluate both components with one CAMB provider, plot the initial P1D model,
-  optionally minimize the summed data likelihood and plot the best fit.
-  Requires the optional BAO data installation above. The fixed CM2026
-  background makes BAO a constant; the combination assumes independence.
+- [Joint DESI DR1 P1D + DR2 Lyα BAO](notebooks/joint_DR1P1D_DR2BAO.py): DR1 P1D
+  with `forest_mpg_gp` and the four DESI DR2 BAO correlations fitted with Vega
+  (`examples/joint_dr1p1d_forestmpggp_dr2bao.yaml`), sharing cosmology, IGM and
+  ForestFlow. Starts from the `forest_mpg_gp` initial conditions, minimizes
+  jointly, plots both models and the (Δ²_star, n_star, α_∥, α_⊥) local-error
+  triangle, and saves/restores the fit.
 - [Joint DESI DR1 cup1d + Vega Y3 mock](notebooks/04_joint_cup1d_vega_mock.py):
   vary `As`, `ns`, four mean-flux nodes, selected cup1d/Vega nuisances and
   `ap`/`at`; inspect shared Arinyo coefficients; plot both data branches;

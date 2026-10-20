@@ -1,0 +1,290 @@
+# CM2026 baseline with the cup1d forest_mpg_gp emulator (DESI DR1 P1D only) and the
+# line-of-sight Kaiser silicon model (ln|b| and ln sigma, two z nodes each)
+# instead of the CM2026 silicon templates; beta_SiIII and beta_SiII are free.
+# As and ns priors are the native cosmo_prior_nsigma=2 ranges (training mean +- 2 sigma).
+# Fixed cosmology: LaCE/cup1d Planck18_noBAO (Planck 2018 TT,TE,EE+lowE+lensing,
+# mnu = 0.06 eV), the cosmology of the Vega DR2 template; As/ns references and
+# bounds exported from cup1d with fid_cosmo_label: Planck18_noBAO.
+# Unlike validation_demo.yaml, the calibrated ForestFlow covariance is required.
+params: &definitions
+  H0: 67.36
+  ombh2: 0.02237
+  omch2: 0.12
+  mnu: 0.06  # one massive neutrino (CAMB/LaCE default), as Planck18_noBAO
+  nnu: 3.044  # Native LaCE/CAMB Planck18 default for the supported revision.
+  omk: 0.0
+  tau: 0.0  # Native LaCE Planck18 reionization setting.
+  nrun: 0.0
+  As:
+    prior: {min: 1.285951426688915e-9, max: 2.821676315539169e-9}
+    ref: 2.0989031673191437e-9  # exp(3.044) 1e-10
+    proposal: 2e-11
+  ns:
+    prior: {min: 0.9111361369993592, max: 1.0265420743317653}
+    ref: 0.9649
+    proposal: 0.001
+  igm_tau_eff_0:
+    prior: {min: -0.22092695416564634, max: 0.2240260715592276}
+    ref: 0
+    proposal: 0.005
+  igm_tau_eff_1:
+    prior: {min: -0.22092695416564634, max: 0.2240260715592276}
+    ref: 0
+    proposal: 0.005
+  igm_tau_eff_2:
+    prior: {min: -0.22092695416564634, max: 0.2240260715592276}
+    ref: 0
+    proposal: 0.005
+  igm_tau_eff_3:
+    prior: {min: -0.22092695416564634, max: 0.2240260715592276}
+    ref: 0
+    proposal: 0.005
+  igm_sigT_kms_0:
+    prior: {min: 0.7943149440867925, max: 1.2731213973588384}
+    ref: 1
+    proposal: 0.005
+  igm_sigT_kms_1:
+    prior: {min: 0.7943149440867925, max: 1.2731213973588384}
+    ref: 1
+    proposal: 0.005
+  igm_sigT_kms_2:
+    prior: {min: 0.7943149440867925, max: 1.2731213973588384}
+    ref: 1
+    proposal: 0.005
+  igm_sigT_kms_3:
+    prior: {min: 0.7943149440867925, max: 1.2731213973588384}
+    ref: 1
+    proposal: 0.005
+  igm_gamma_0:
+    prior: {min: 0.7636549003501613, max: 1.2648635404244262}
+    ref: 1
+    proposal: 0.005
+  igm_gamma_1:
+    prior: {min: 0.7636549003501613, max: 1.2648635404244262}
+    ref: 1
+    proposal: 0.005
+  igm_gamma_2:
+    prior: {min: 0.7636549003501613, max: 1.2648635404244262}
+    ref: 1
+    proposal: 0.005
+  igm_gamma_3:
+    prior: {min: 0.7636549003501613, max: 1.2648635404244262}
+    ref: 1
+    proposal: 0.005
+  igm_kF_kms_0:
+    prior: {min: 0.8131443815883004, max: 1.2962930152539578}
+    ref: 1
+    proposal: 0.005
+  igm_kF_kms_1:
+    prior: {min: 0.8131443815883004, max: 1.2962930152539578}
+    ref: 1
+    proposal: 0.005
+  igm_kF_kms_2:
+    prior: {min: 0.8131443815883004, max: 1.2962930152539578}
+    ref: 1
+    proposal: 0.005
+  igm_kF_kms_3:
+    prior: {min: 0.8131443815883004, max: 1.2962930152539578}
+    ref: 1
+    proposal: 0.005
+  p1d_b_SiIII_0:
+    prior: {min: -12.0, max: -2.0}
+    ref: -4.906
+    proposal: 0.05
+  p1d_b_SiIII_1:
+    prior: {min: -12.0, max: -2.0}
+    ref: -4.906
+    proposal: 0.05
+  p1d_b_SiIIa_0:
+    prior: {min: -12.0, max: -2.0}
+    ref: -5.259
+    proposal: 0.05
+  p1d_b_SiIIa_1:
+    prior: {min: -12.0, max: -2.0}
+    ref: -5.259
+    proposal: 0.05
+  p1d_b_SiIIb_0:
+    prior: {min: -12.0, max: -2.0}
+    ref: -6.032
+    proposal: 0.05
+  p1d_b_SiIIb_1:
+    prior: {min: -12.0, max: -2.0}
+    ref: -6.032
+    proposal: 0.05
+  p1d_b_SiIIc_0:
+    prior: {min: -12.0, max: -2.0}
+    ref: -5.382
+    proposal: 0.05
+  p1d_b_SiIIc_1:
+    prior: {min: -12.0, max: -2.0}
+    ref: -5.382
+    proposal: 0.05
+  p1d_beta_SiIII_0:
+    prior: {min: 0.0, max: 3.0}
+    ref: 0.5
+    proposal: 0.05
+  p1d_beta_SiII_0:
+    prior: {min: 0.0, max: 3.0}
+    ref: 0.5
+    proposal: 0.05
+  p1d_sig_SiIII_0:
+    prior: {min: 0.0, max: 7.0}
+    ref: 4.605
+    proposal: 0.05
+  p1d_sig_SiIII_1:
+    prior: {min: 0.0, max: 7.0}
+    ref: 4.605
+    proposal: 0.05
+  p1d_sig_SiII_0:
+    prior: {min: 0.0, max: 7.0}
+    ref: 4.605
+    proposal: 0.05
+  p1d_sig_SiII_1:
+    prior: {min: 0.0, max: 7.0}
+    ref: 4.605
+    proposal: 0.05
+  p1d_HCD_damp1_0:
+    prior: {min: -10, max: -0.03}
+    ref: -1.4
+    proposal: 0.02
+  p1d_HCD_damp1_1:
+    prior: {min: -10, max: -0.03}
+    ref: -1.4
+    proposal: 0.02
+  p1d_HCD_damp2_0:
+    prior: {min: -10, max: -1}
+    ref: -6
+    proposal: 0.02
+  p1d_HCD_damp2_1:
+    prior: {min: -10, max: -1}
+    ref: -6
+    proposal: 0.02
+  p1d_HCD_damp3_0:
+    prior: {min: -10, max: -1}
+    ref: -5
+    proposal: 0.02
+  p1d_HCD_damp3_1:
+    prior: {min: -10, max: -1}
+    ref: -5
+    proposal: 0.02
+  p1d_HCD_damp4_0:
+    prior: {min: -10, max: -1}
+    ref: -5
+    proposal: 0.02
+  p1d_HCD_damp4_1:
+    prior: {min: -10, max: -1}
+    ref: -5
+    proposal: 0.02
+  p1d_R_coeff_0:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_1:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_2:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_3:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_4:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_5:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_6:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_7:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_8:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_9:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  p1d_R_coeff_10:
+    prior: {min: -0.1, max: 0.1}
+    ref: 0
+    proposal: 0.001
+  Delta2star: {derived: true}
+  nstar: {derived: true}
+  alphastar: {derived: true}
+theory:
+  camb:
+    extra_args:
+      WantCls: false
+      Want_CMB: false
+      nonlinear: false
+      neutrino_hierarchy: degenerate
+      num_massive_neutrinos: 1
+      pivot_scalar: 0.05
+      pivot_tensor: 0.05
+  lya_interface.theory.lya_cosmology.LyaCosmology:
+    stop_at_error: true
+    kmax_iMpc: 200.0
+    snapshot_nodes: 4096
+    z_star: 3.0
+    k_star_ikms: 0.009
+  lya_interface.theory.forestflow.ForestFlowTheory:
+    stop_at_error: true
+    native_config: examples/native_cm2026_forestmpggp_kaiser_beta.yaml
+    parameter_definitions: *definitions
+    emulator_label: forest_mpg_gp
+    realizations: 1000
+    seed: 0
+    hull_factor: 1.15
+    enforce_training_hull: false  # Temporary exploratory override: permits extrapolation.
+    cosmology_domain:
+      H0: [65.0, 70.0]
+      ombh2: [0.02237, 0.02237]
+      omch2: [0.12, 0.12]
+      mnu: [0.06, 0.06]
+      nnu: [3.044, 3.044]
+      omk: [0.0, 0.0]
+      nrun: [0.0, 0.0]
+    # Split Gauss-Legendre in ln k at fixed k_par (cup1d's native rule), split at
+    # k = 0.4/Mpc. On DESI DR1 (forest_mpg_gp, P1D and Kaiser-metal moments, 4
+    # points) |delta chi2| <= 0.025 against a converged reference. The high-k
+    # segment needs 32 nodes, and k_perp_min = 1e-3 /Mpc biases chi2 by ~0.25
+    # (the strip down to 1e-4 is ~1e-4 of P1D at the lowest k).
+    projection:
+      rule: k_mu
+      k_perp_min_iMpc: 0.0001
+      k_perp_max_iMpc: 100.0
+      k_split_iMpc: 0.4
+      n_low: 32
+      n_high: 32
+likelihood:
+  lya_interface.likelihoods.cup1d.Cup1DLikelihood:
+    stop_at_error: true
+    native_config: examples/native_cm2026_forestmpggp_kaiser_beta.yaml
+    parameter_definitions: *definitions
+    covariance_asset: ../ForestFlow/data/covariance/l1O_cov_forest_mpg_gp.npy
+    blinding_policy: native
+    include_logdet: false
+    # Frozen native Planck18_noBAO M(z) = H(z)/(1+z), km/s/Mpc; used only for error covariance.
+    fiducial_M:
+      2.2: 69.8826810086643
+      2.4: 71.66207515037594
+      2.6: 73.43676334452594
+      2.8: 75.19943425105039
+      3.0: 76.94526232942296
+      3.2: 78.67112528473942
+      3.4: 80.3750775941316
+      3.6: 82.05599161821358
+      3.8: 83.71331005574295
+      4.0: 85.3468734171004
+      4.2: 86.95679872302013

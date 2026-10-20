@@ -14,7 +14,7 @@ from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
 from lya_interface.diagnostics import (
     LocalErrors, PointFit, estimate_local_errors, goodness_of_fit, minimize_point,
-    plot_star_ellipse, star_values,
+    plot_local_triangle, plot_star_ellipse, plot_vega_point, star_values,
 )
 from lya_interface.provenance import file_identity
 
@@ -170,6 +170,27 @@ class Fit:
         return plot_star_ellipse(self.model, self.best_fit.point, self.local_errors,
                                  ax=ax, label=label, color=color, levels=levels,
                                  unblind=unblind)
+
+    def plot_triangle(self, parameters=("Delta2star", "nstar", "ap", "at"), axes=None,
+                      label=None, color=None, levels=(0.6827, 0.9545), unblind=False):
+        """Triangle plot of local-error ellipses at the best fit.
+
+        Local errors are estimated with Gauss-Newton first if not available.
+        Arguments and returns as :func:`plot_local_triangle`; pass ``axes`` to
+        overlay several fits.
+        """
+        if self.best_fit is None:
+            raise ValueError("run minimize() or restore a fit first")
+        if self.local_errors is None:
+            self.estimate_errors()
+        return plot_local_triangle(self.model, self.best_fit.point, self.local_errors,
+                                   parameters=parameters, axes=axes, label=label,
+                                   color=color, levels=levels, unblind=unblind)
+
+    def plot_vega(self, point=None, title=None):
+        """Plot the Vega correlations at ``point`` (default: the best fit)."""
+        point = self.best_fit.point if point is None else point
+        return plot_vega_point(self.model, point, title=title)
 
     def save(self, filename):
         """Write the fit to a NumPy result file.

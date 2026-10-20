@@ -2,7 +2,10 @@
 # cup1d/configs/desi_dr1_tests/cm2026_base_forestmpggp.yaml (sparse overrides on
 # the maintained CM2026 defaults). Output and initial-condition entries are
 # omitted: the interface writes nothing and starts from the YAML references.
+# Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
+fid_cosmo_label: Planck18_noBAO
 emulator_label: forest_mpg_gp
 n_k_emu: 64
-k_rebin_factor: 16
+# 32: |dchi2| <= 0.043 vs 128 on DR1 (<= 0.018 near the fit); 16: up to 0.5.
+k_rebin_factor: 32
 cosmo_prior_nsigma: 2.0
