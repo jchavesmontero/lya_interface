@@ -1,0 +1,8 @@
+# CM2026 baseline with the forest_mpg_gp emulator, mirroring
+# cup1d/configs/desi_dr1_tests/cm2026_base_forestmpggp.yaml (sparse overrides on
+# the maintained CM2026 defaults). Output and initial-condition entries are
+# omitted: the interface writes nothing and starts from the YAML references.
+emulator_label: forest_mpg_gp
+n_k_emu: 64
+k_rebin_factor: 16
+cosmo_prior_nsigma: 2.0

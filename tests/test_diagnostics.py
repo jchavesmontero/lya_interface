@@ -6,7 +6,7 @@ import numpy as np
 from cobaya.model import get_model
 from test_cobaya_graph import LinearFixture, ForestFixture, LikelihoodFixture
 from lya_interface.theory.lya_cosmology import LyaCosmology
-from lya_interface.diagnostics import evaluate_point, plot_point, minimize_point
+from lya_interface.diagnostics import evaluate_point, plot_point, minimize_point, estimate_local_errors
 
 
 def configuration(likelihood=LikelihoodFixture):
@@ -43,7 +43,7 @@ def test_minimization_returns_real_fitted_point_and_reports_budget_failure(capsy
         assert not budget_limited.success
         fit = minimize_point(model, point, max_evals=300, report_every=2)
         output = capsys.readouterr().out
-        assert "Evaluation 2:" in output
+        assert "Evaluation 2 (" in output
         assert "chi2_P1D=" in output and "best -2logL_total=" in output
         assert "Finished:" in output
         assert fit.success
@@ -72,3 +72,25 @@ def test_native_blinding_shifts_diagnostics_not_scientific_predictions(monkeypat
         # Restoring cached states must not accumulate the offsets.
         blinded.logposterior(dict(p1d_R_coeff_0=.01))
         np.testing.assert_array_equal(blinded.logposterior(point).derived, b.derived)
+
+
+def test_gauss_newton_local_errors_are_finite_and_use_few_evaluations():
+    info = configuration()
+    # As in the notebooks: derived columns cannot be collected after
+    # derived-free evaluations, so graphs used for errors do not declare them.
+    for name in ("Delta2star", "nstar", "alphastar"):
+        info["params"].pop(name)
+    with get_model(info) as model:
+        point = dict(p1d_R_coeff_0=0.)
+        errors = estimate_local_errors(model, point)
+        reference = estimate_local_errors(model, point, method="finite_difference")
+        assert errors.hessian.shape == (1, 1)
+        assert np.isfinite(errors.errors["p1d_R_coeff_0"])
+        # The synthetic likelihood is flat in this parameter: both agree.
+        np.testing.assert_allclose(errors.hessian, reference.hessian, atol=1e-8)
+        try:
+            estimate_local_errors(model, point, method="bad")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unknown method accepted")

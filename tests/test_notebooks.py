@@ -23,8 +23,12 @@ def test_notebook_structure_and_code(path):
     for cell in code_cells:
         assert cell["execution_count"] is None
         assert cell["outputs"] == []
-        ast.parse("".join(cell["source"]), filename=str(path))
-    assert "model.close()" in "\n".join("".join(c["source"]) for c in code_cells)
+        # IPython line/cell magics (%autoreload, %%time) are not Python syntax.
+        source = "".join(cell["source"])
+        source = "\n".join("" if line.lstrip().startswith("%") else line for line in source.splitlines())
+        ast.parse(source, filename=str(path))
+    code = "\n".join("".join(c["source"]) for c in code_cells)
+    assert "model.close()" in code or "fit.close()" in code
     restored = jupytext.reads(jupytext.writes(notebook, fmt="py:percent"), fmt="py:percent")
     assert [(c.cell_type, c.source) for c in restored.cells] == [
         (c.cell_type, c.source) for c in notebook.cells

@@ -1,8 +1,11 @@
 """Point diagnostics using the native cup1d likelihood and P1D renderers."""
 
 from dataclasses import dataclass
+from types import SimpleNamespace
+import time
 import numpy as np
 from lya_interface.parameters import route
+import lya_interface.plotting  # noqa: F401  (house matplotlib style)
 
 
 @dataclass(frozen=True)
@@ -285,6 +288,80 @@ def format_goodness_of_fit(statistics, *, multiline=False):
     return data_terms + ("\n" if multiline and data_terms else "; ") + joint
 
 
+def plot_point_with_residuals(model, point, ncols=4, title=None):
+    """Plot ``k P1D / pi`` and the relative residual for every redshift.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Initialized dependency graph with one cup1d likelihood.
+    point : mapping
+        Physical sampled values.
+    ncols : int, default=4
+        Number of redshift columns. Each redshift has a spectrum panel above a
+        residual panel sharing the ``k`` axis.
+    title : str, optional
+        Prefix for the correlated joint chi-squared title.
+
+    Returns
+    -------
+    tuple
+        Matplotlib figure and the array of spectrum axes, one per redshift.
+
+    Notes
+    -----
+    The model includes contaminants, resolution and rebinning onto the data
+    bins. Residuals are ``data / model - 1`` with marginal (diagonal) errors
+    ``sigma / model``; the per-redshift chi2 uses the same marginal blocks, so
+    their sum need not equal the correlated joint chi2 in the title.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MaxNLocator
+    from cup1d.likelihood.external import gaussian_residual
+
+    result, powers = evaluate_point(model, point)
+    backend = cup1d_component(model).backend
+    entries = []
+    for key, data in backend.data.items():
+        for i, z in enumerate(data.z):
+            k = np.asarray(data.k_kms[i])
+            pk = np.asarray(data.Pk_kms[i])
+            mod = np.asarray(powers[key][i])
+            err = np.sqrt(np.diag(backend.cov_Pk_kms[key][i]))
+            chi2, _ = gaussian_residual(pk - mod, backend.chol_Pk_kms[key][i])
+            entries.append((float(z), k, pk, mod, err, chi2))
+    entries.sort(key=lambda e: e[0])
+    nrows = -(-len(entries) // ncols)
+    fig = plt.figure(figsize=(4.2 * ncols, 4.2 * nrows))
+    outer = fig.add_gridspec(nrows, ncols, left=0.06, right=0.99, bottom=0.05,
+                             top=0.88, wspace=0.28, hspace=0.3)
+    spectra = []
+    for n, (z, k, pk, mod, err, chi2) in enumerate(entries):
+        inner = outer[n // ncols, n % ncols].subgridspec(2, 1, height_ratios=(3, 1), hspace=0)
+        top = fig.add_subplot(inner[0])
+        bottom = fig.add_subplot(inner[1], sharex=top)
+        top.errorbar(k, k * pk / np.pi, k * err / np.pi, fmt="o", ms=3, capsize=2, color="C0", label="data")
+        top.plot(k, k * mod / np.pi, color="C1", label="model")
+        top.set_title(f"z={z:.1f}  $\\chi^2$={chi2:.1f}/{len(k)}", fontsize=10)
+        top.tick_params(labelbottom=False)
+        bottom.errorbar(k, pk / mod - 1, err / mod, fmt="o", ms=3, capsize=2, color="C0")
+        bottom.axhline(0, color="C1", lw=1)
+        bottom.axhspan(-0.01, 0.01, color="gray", alpha=0.2, lw=0)
+        bottom.set_ylim(-0.1, 0.1)
+        bottom.set_yticks([-0.05, 0, 0.05])
+        top.yaxis.set_major_locator(MaxNLocator(prune="lower"))
+        if n % ncols == 0:
+            top.set_ylabel(r"$k P_{1D}/\pi$")
+            bottom.set_ylabel("data/model - 1")
+        if n >= len(entries) - ncols:
+            bottom.set_xlabel(r"$k_\parallel$ [s/km]")
+        spectra.append(top)
+    spectra[0].legend(fontsize=8)
+    prefix = "" if title is None else title + "\n"
+    fig.suptitle(prefix + format_goodness_of_fit(goodness_of_fit(model, point), multiline=True))
+    return fig, np.array(spectra)
+
+
 def minimize_point(
     model,
     initial_point,
@@ -294,6 +371,8 @@ def minimize_point(
     verbose=True,
     report_every=100,
     optimization_bounds=None,
+    stall_evals=200,
+    stall_chi2=0.1,
 ):
     """
     Run a bounded, total-likelihood Nelder-Mead fit in the unit cube.
@@ -314,6 +393,14 @@ def minimize_point(
         Print initial, periodic and final diagnostics without fitted parameters.
     report_every : int, default=100
         Number of optimizer evaluations between progress reports.
+
+    stall_evals : int or None, default=200
+        Stop when the best ``-2 log L_total`` has not improved by more than
+        ``stall_chi2`` during this many consecutive evaluations. ``None``
+        disables the criterion. A stall stop counts as success, like cup1d's
+        no-further-improvement stop.
+    stall_chi2 : float, default=0.1
+        Improvement in ``-2 log L_total`` that resets the stall counter.
 
     Returns
     -------
@@ -399,8 +486,14 @@ def minimize_point(
             flush=True,
         )
 
+    last_report = time.perf_counter()
+    stall_reference = [2 * best_value, 0]  # best -2logL at last reset, evaluation count
+
+    class _Stalled(Exception):
+        pass
+
     def objective(x, count=True):
-        nonlocal best_x, best_value, evaluations
+        nonlocal best_x, best_value, evaluations, last_report
         if count:
             evaluations += 1
         value = np.inf
@@ -410,34 +503,48 @@ def minimize_point(
                 value = -float(np.sum(posterior.loglikes))
         if np.isfinite(value) and value < best_value:
             best_x, best_value = np.array(x, copy=True), value
+        if count and stall_evals is not None:
+            if stall_reference[0] - 2 * best_value > stall_chi2:
+                stall_reference[:] = [2 * best_value, evaluations]
+            elif evaluations - stall_reference[1] >= stall_evals:
+                raise _Stalled
         if verbose and count and evaluations % report_every == 0:
+            elapsed = time.perf_counter() - last_report
             if np.isfinite(value):
-                detail = (format_goodness_of_fit(goodness_of_fit(model, physical(x)))
-                          + f", -2logL_total={2 * value:.6g}")
+                detail = format_goodness_of_fit(goodness_of_fit(model, physical(x)))
             else:
-                detail = "invalid trial (-2logL_total=inf)"
+                detail = "invalid trial"
             print(
-                f"Evaluation {evaluations}: {detail}; best -2logL_total={2 * best_value:.6g}",
+                f"Evaluation {evaluations} ({elapsed:.1f} s): {detail}; "
+                f"best -2logL_total={2 * best_value:.6g}",
                 flush=True,
             )
+            last_report = time.perf_counter()
         return value
 
     simplex = np.tile(start, (len(names) + 1, 1))
     for i in range(len(names)):
         simplex[i + 1, i] += 0.02 if start[i] <= 0.98 else -0.02
-    fit = minimize(
-        objective,
-        start,
-        method="Nelder-Mead",
-        bounds=[(0.0, 1.0)] * len(names),
-        options=dict(
-            maxfev=max_evals,
-            xatol=xtol,
-            fatol=ftol,
-            adaptive=True,
-            initial_simplex=simplex,
-        ),
-    )
+    try:
+        fit = minimize(
+            objective,
+            start,
+            method="Nelder-Mead",
+            bounds=[(0.0, 1.0)] * len(names),
+            options=dict(
+                maxfev=max_evals,
+                xatol=xtol,
+                fatol=ftol,
+                adaptive=True,
+                initial_simplex=simplex,
+            ),
+        )
+    except _Stalled:
+        fit = SimpleNamespace(
+            x=best_x, success=True, nfev=evaluations,
+            message=f"Stopped: -2logL_total improved by less than {stall_chi2} "
+                    f"in {stall_evals} evaluations.",
+        )
     final_valid = np.isfinite(objective(fit.x, count=False))
     point = physical(best_x)
     result = evaluate_point(model, point)[0] if initial_result is not None else None
@@ -506,7 +613,234 @@ def propagate_local_errors(point, local_errors, evaluate, step_fraction=.25):
     return PropagatedErrors(values, covariance, np.sqrt(np.maximum(np.diag(covariance), 0)))
 
 
-def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3):
+def _lya_cosmology(model):
+    """Return the configured LyaCosmology theory component."""
+    from lya_interface.theory.lya_cosmology import LyaCosmology
+    return next(c for c in model.theory.values() if isinstance(c, LyaCosmology))
+
+
+def star_values(model, point, unblind=False):
+    """Return ``(Delta2star, nstar)`` at a sampled point, blinded by default.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Graph containing a ``LyaCosmology`` component.
+    point : mapping
+        Physical sampled values.
+    unblind : bool, default=False
+        Omit the native DESI blinding offsets. Use only for data sets that
+        have been unblinded (e.g. DESI DR1 P1D).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``[Delta2star, nstar]`` at the component's ``(z_star, k_star_ikms)``.
+        Unless ``unblind``, they include the native DESI blinding offsets,
+        exactly like the exported derived parameters.
+    """
+    from lya_interface.derived import star_parameters
+
+    model.logposterior(point, return_derived=False)
+    lya = _lya_cosmology(model)
+    stars = star_parameters(lya.get_lya_cosmology(), lya.z_star, lya.k_star_ikms)
+    if unblind:
+        return np.array([stars["Delta2star"], stars["nstar"]])
+    return np.array([stars["Delta2star"] + lya._blind.get("Delta2_star", 0.),
+                     stars["nstar"] + lya._blind.get("n_star", 0.)])
+
+
+def is_blinded(model):
+    """Return whether native blinding offsets apply to the star parameters."""
+    blind = _lya_cosmology(model)._blind
+    return bool(blind.get("Delta2_star", 0.) or blind.get("n_star", 0.))
+
+
+def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=None,
+                      levels=(0.6827, 0.9545), unblind=False):
+    """Plot the local-error ellipses of ``(n_star, Delta2_star)`` and the minimum.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Graph containing a ``LyaCosmology`` component.
+    point : mapping
+        Physical sampled values at the minimum.
+    local_errors : LocalErrors
+        Local parameter covariance at ``point``.
+    ax : matplotlib.axes.Axes, optional
+        Axes to draw on, e.g. to overlay several fits. A new figure otherwise.
+    label : str, optional
+        Prefix of the legend entries, useful when overlaying fits.
+    color : str, optional
+        Colour of this fit; levels are distinguished by line style.
+    levels : sequence of float, default=(0.6827, 0.9545)
+        Joint two-parameter probability contents of the ellipses.
+    unblind : bool, default=False
+        Plot values without the native DESI blinding offsets, for unblinded
+        data sets such as DESI DR1 P1D. The "(blinded)" labels are then omitted.
+
+    Returns
+    -------
+    fig, ax
+        Matplotlib figure and axes.
+    summary : dict
+        Blinded values, marginal errors, correlation and the propagated
+        :class:`PropagatedErrors`.
+
+    Notes
+    -----
+    The full parameter covariance is propagated through finite-difference
+    derivatives of :func:`star_values`, keeping all correlations. Unless
+    ``unblind``, values carry the native DESI blinding offsets, and every legend
+    entry and axis label says "(blinded)" whenever an offset applies.
+    """
+    import matplotlib.pyplot as plt
+    from scipy.stats import chi2 as chi2_distribution
+
+    stars = propagate_local_errors(point, local_errors, lambda p: star_values(model, p, unblind))
+    delta2, nstar = stars.values
+    eigenvalues, eigenvectors = np.linalg.eigh(stars.covariance[::-1, ::-1])  # (n_star, Delta2_star)
+    angle = np.linspace(0, 2 * np.pi, 200)
+    unit_circle = np.vstack([np.cos(angle), np.sin(angle)])
+    suffix = " (blinded)" if is_blinded(model) and not unblind else ""
+    prefix = "" if label is None else label + ", "
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5, 4.5))
+    else:
+        fig = ax.figure
+    if color is None:
+        color = ax._get_lines.get_next_color()
+    for level, style in zip(levels, ("-", "--", ":", "-.")):
+        delta_chi2 = chi2_distribution.ppf(level, 2)
+        ellipse = eigenvectors @ (np.sqrt(delta_chi2 * np.maximum(eigenvalues, 0))[:, None] * unit_circle)
+        ax.plot(nstar + ellipse[0], delta2 + ellipse[1], style, color=color,
+                label=f"{prefix}{100 * level:.0f}%{suffix}")
+    ax.plot(nstar, delta2, "x", color=color, ms=10, mew=2, label=f"{prefix}MLE{suffix}")
+    ax.set_xlabel(r"$n_\star$" + suffix)
+    ax.set_ylabel(r"$\Delta^2_\star$" + suffix)
+    ax.legend(loc="upper right", fontsize=8)
+    ax.grid(alpha=0.25)
+    summary = {
+        "Delta2_star": float(delta2), "n_star": float(nstar),
+        "sigma_Delta2_star": float(stars.errors[0]), "sigma_n_star": float(stars.errors[1]),
+        "correlation": float(stars.covariance[0, 1] / np.prod(stars.errors)),
+        "blinded": bool(suffix), "propagated": stars,
+    }
+    return fig, ax, summary
+
+
+def _gauss_newton_hessian(model, names, lower, width, center, step):
+    """Unit-cube posterior curvature ``sum J^T C^-1 J`` plus the prior curvature.
+
+    Every Gaussian data term contributes its own ``J^T C^-1 J``: the cup1d P1D
+    (per-redshift covariance blocks) and, if present, Vega (global or
+    per-correlation inverse covariance). The terms are independent, so their
+    curvatures add.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Graph with a cup1d P1D and/or a Vega likelihood.
+    names, lower, width, center
+        Sampled names, unit-cube origin and widths, and the expansion point.
+    step : float
+        Unit-cube derivative step; central unless a bound is within ``step``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Symmetric ``(N, N)`` curvature of ``-log posterior``.
+
+    Raises
+    ------
+    ValueError
+        If the graph has no supported data likelihood, or Vega marginalizes
+        template coefficients in the fit (its model is then not a fixed vector).
+    """
+    from scipy.linalg import cho_solve
+
+    try:
+        backend = cup1d_component(model).backend
+    except ValueError:
+        backend = None
+    vega = vega_component(model)
+    if backend is None and vega is None:
+        raise ValueError("gauss_newton needs a cup1d P1D and/or Vega likelihood")
+    if len(model.likelihood) != (backend is not None) + (vega is not None):
+        raise ValueError("gauss_newton supports only cup1d P1D and Vega data likelihoods")
+    if vega is not None and vega.backend.marginalize_in_fit:
+        raise ValueError("gauss_newton does not support Vega marginalize_in_fit")
+
+    def vectors(x):
+        point = dict(zip(names, lower + width * x))
+        pieces = []
+        if backend is not None:
+            _, powers = evaluate_point(model, point)
+            pieces += [np.asarray(powers[key][i]) for key, data in backend.data.items()
+                       for i in range(len(data.z))]
+        else:
+            model.logposterior(point, return_derived=False)
+        if vega is not None:
+            values = vega.parameters_for_evaluation({n: point[n] for n in vega.mapping})
+            cf = vega.backend.compute_model(values, run_init=False)
+            pieces.append(np.concatenate([np.asarray(cf[n])[vega.backend.data[n].model_mask]
+                                          for n in vega.backend.corr_items]))
+        return pieces
+
+    solvers = []
+    if backend is not None:
+        solvers += [(lambda j, f=backend.chol_Pk_kms[key][i]: cho_solve(f, j))
+                    for key, data in backend.data.items() for i in range(len(data.z))]
+    if vega is not None:
+        vb = vega.backend
+        if vb._use_global_cov:
+            invcov = vb.masked_global_invcov
+        else:
+            from scipy.linalg import block_diag
+            invcov = block_diag(*[vb.data[n].inv_masked_cov for n in vb.corr_items])
+        solvers.append(lambda j: invcov @ j)
+
+    base = vectors(center)
+    jacobian = [np.empty((len(b), len(names))) for b in base]
+    for index in range(len(names)):
+        h = min(step, center[index], 1. - center[index])
+        direction = np.zeros(len(names))
+        if h > 0:
+            direction[index] = h
+            plus, minus = vectors(center + direction), vectors(center - direction)
+            derivative = [(p - m) / (2 * h) for p, m in zip(plus, minus)]
+        else:
+            direction[index] = step if center[index] < .5 else -step
+            other = vectors(center + direction)
+            derivative = [(o - b) / direction[index] for o, b in zip(other, base)]
+        for block, column in zip(jacobian, derivative):
+            block[:, index] = column
+    hessian = sum(j.T @ solve(j) for j, solve in zip(jacobian, solvers))
+    return hessian + _prior_curvature(model, names, lower, width, center, step)
+
+
+def _prior_curvature(model, names, lower, width, center, step):
+    """Diagonal curvature of ``-log prior`` in unit-cube coordinates.
+
+    Cobaya priors are separable, so second differences of ``logprior`` along
+    each axis are cheap (no likelihood evaluation). Flat priors give zero.
+    """
+    def logprior(x):
+        return float(model.logprior(dict(zip(names, lower + width * x))))
+
+    curvature = np.zeros(len(names))
+    f0 = logprior(center)
+    for index in range(len(names)):
+        h = min(step, center[index], 1. - center[index])
+        if h <= 0:
+            continue
+        direction = np.zeros(len(names)); direction[index] = h
+        curvature[index] = -(logprior(center + direction) - 2 * f0 + logprior(center - direction)) / h**2
+    return np.diag(curvature)
+
+
+def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3, method="gauss_newton"):
     """Estimate marginalized errors from the local posterior Hessian.
 
     This is the joint analogue of cup1d's Newton curvature estimate. It uses
@@ -514,7 +848,35 @@ def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3):
     parameter bound, all in the unit-cube coordinates of
     :func:`minimize_point`. It includes both data terms and Cobaya priors; it
     is a local Gaussian approximation, not a chain.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Initialized dependency graph.
+    point : mapping
+        Physical sampled values at the minimum.
+    optimization_bounds : mapping, optional
+        Replacement ``(min, max)`` bounds defining the unit cube.
+    step : float, default=1e-3
+        Finite-difference displacement in unit-cube coordinates.
+    method : {'gauss_newton', 'finite_difference'}, default='gauss_newton'
+        ``'gauss_newton'`` builds the curvature as ``J^T C^-1 J`` from the
+        derivatives of the rebinned P1D model (about ``2 N`` evaluations for
+        ``N`` parameters, as in cup1d's ``gauss_newton`` method) and adds the
+        curvature of the Cobaya priors. It needs a graph whose only data
+        likelihoods are cup1d P1D and/or Vega (BAO); each Gaussian term adds its
+        own ``J^T C^-1 J``. ``'finite_difference'`` differentiates the full
+        posterior (order ``N**2`` evaluations) and works for any graph.
+
+    Raises
+    ------
+    ValueError
+        If the method is unknown, the point is invalid, the curvature is not
+        positive semidefinite, or ``'gauss_newton'`` is requested for a graph
+        with an unsupported data likelihood.
     """
+    if method not in ("gauss_newton", "finite_difference"):
+        raise ValueError("method must be 'gauss_newton' or 'finite_difference'")
     names = tuple(model.parameterization.sampled_params())
     bounds = np.asarray(model.prior.bounds(), dtype=float)
     for index, name in enumerate(names):
@@ -531,36 +893,39 @@ def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3):
     if not np.isfinite(f0):
         raise ValueError("cannot estimate local errors at an invalid fitted point")
     size = len(names)
-    hessian = np.empty((size, size))
-    directions = np.where(center < step, 1., np.where(center > 1 - step, -1., 0.))
+    if method == "gauss_newton":
+        hessian = _gauss_newton_hessian(model, names, lower, width, center, step)
+    else:
+        hessian = np.empty((size, size))
+        directions = np.where(center < step, 1., np.where(center > 1 - step, -1., 0.))
 
-    def checked(x):
-        value = objective(x)
-        if not np.isfinite(value):
-            raise ValueError("local curvature stepped outside valid posterior support")
-        return value
+        def checked(x):
+            value = objective(x)
+            if not np.isfinite(value):
+                raise ValueError("local curvature stepped outside valid posterior support")
+            return value
 
-    for i in range(size):
-        ei = np.zeros(size); ei[i] = step
-        if directions[i] == 0:
-            hessian[i, i] = (checked(center + ei) - 2*f0 + checked(center - ei)) / step**2
-        else:
-            direction = directions[i] * ei
-            hessian[i, i] = (f0 - 2*checked(center + direction) + checked(center + 2*direction)) / step**2
-        for j in range(i):
-            ej = np.zeros(size); ej[j] = step
-            if directions[i] == 0 and directions[j] == 0:
-                value = (checked(center + ei + ej) - checked(center + ei - ej)
-                         - checked(center - ei + ej) + checked(center - ei - ej)) / (4*step**2)
+        for i in range(size):
+            ei = np.zeros(size); ei[i] = step
+            if directions[i] == 0:
+                hessian[i, i] = (checked(center + ei) - 2*f0 + checked(center - ei)) / step**2
             else:
-                di = ei if directions[i] == 0 else directions[i] * ei
-                dj = ej if directions[j] == 0 else directions[j] * ej
-                # Forward/inward mixed derivative. For an interior direction
-                # this remains a first-order local derivative, avoiding an
-                # invalid point across a hard posterior boundary.
-                value = (checked(center + di + dj) - checked(center + di)
-                         - checked(center + dj) + f0) / step**2
-            hessian[i, j] = hessian[j, i] = value
+                direction = directions[i] * ei
+                hessian[i, i] = (f0 - 2*checked(center + direction) + checked(center + 2*direction)) / step**2
+            for j in range(i):
+                ej = np.zeros(size); ej[j] = step
+                if directions[i] == 0 and directions[j] == 0:
+                    value = (checked(center + ei + ej) - checked(center + ei - ej)
+                             - checked(center - ei + ej) + checked(center - ei - ej)) / (4*step**2)
+                else:
+                    di = ei if directions[i] == 0 else directions[i] * ei
+                    dj = ej if directions[j] == 0 else directions[j] * ej
+                    # Forward/inward mixed derivative. For an interior direction
+                    # this remains a first-order local derivative, avoiding an
+                    # invalid point across a hard posterior boundary.
+                    value = (checked(center + di + dj) - checked(center + di)
+                             - checked(center + dj) + f0) / step**2
+                hessian[i, j] = hessian[j, i] = value
     hessian = 0.5 * (hessian + hessian.T)
     eigenvalues = np.linalg.eigvalsh(hessian)
     tolerance = np.finfo(float).eps * size * max(1., np.max(np.abs(eigenvalues)))
