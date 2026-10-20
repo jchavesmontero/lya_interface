@@ -24,16 +24,56 @@ class VegaLikelihood(Likelihood):
     use_forestflow: bool = True
     lya_tracer: str = "LYA"
     prior_policy: str = "reject"
+    metal_alpha_reference: str | dict | None = None
 
     def initialize(self):
-        """Load static Vega data, template and configuration once."""
+        """Load static Vega data, template and configuration once.
+
+        With ``metal_model`` and ``metal_alpha_reference`` (a P1D fit saved by
+        :meth:`lya_interface.fit.Fit.save`, or a mapping of public ``p1d_``
+        values), the amplitude exponent ``alpha_<line>`` of each silicon line is
+        set once, before Vega builds its metal matrices, to the logarithmic
+        slope ``d ln|b| / d ln(1 + z)`` of the cup1d bias history at that
+        reference point and Vega's ``z_eff`` (see
+        :func:`metal_amplitude_exponents`). Vega freezes these exponents at
+        initialization, so they do not follow the sampled point.
+        """
         if not self.native_config:
             raise ValueError("VegaLikelihood requires native_config")
         if self.use_forestflow and (self.template_h is None or self.template_h <= 0):
             raise ValueError("ForestFlow Vega mode requires positive documented template_h")
         from vega.vega_interface import VegaInterface
 
-        self.backend = VegaInterface(self.native_config)
+        self.metal_parameters = {}
+        self._kaiser = None
+        self._sii_x_sii_free = False
+        self.metal_alpha = {}
+        if self.metal_model:
+            self._load_metal_model()
+        overrides = None
+        if self.metal_alpha_reference is not None:
+            if not self.metal_model:
+                raise ValueError("metal_alpha_reference requires metal_model")
+            configured = set(self.fixed_native_parameters)
+            for native in self.parameter_mapping.values():
+                configured |= {native} if isinstance(native, str) else set(native)
+            alphas = {f"alpha_{name}" for name in self._SILICON.values()}
+            if alphas & configured:
+                raise ValueError("alpha_<silicon line> set both by metal_alpha_reference and by "
+                                 f"parameter_mapping/fixed_native_parameters: {sorted(alphas & configured)}")
+            zeff = main_config_zeff(self.native_config)
+            native = self._native_metal_point(reference_point(self.metal_alpha_reference))
+            exponents = metal_amplitude_exponents(self._kaiser, native, zeff)
+            self.metal_alpha = {self._SILICON[line]: alpha for line, alpha in exponents.items()}
+            overrides = {f"alpha_{name}": alpha for name, alpha in self.metal_alpha.items()}
+            self.log.info("silicon alpha_<line> from the P1D reference at z_eff = %s: %s", zeff,
+                          {name: round(alpha, 4) for name, alpha in self.metal_alpha.items()})
+
+        # parameter_overrides is a vega_fork extension: pass it only when needed
+        if overrides:
+            self.backend = VegaInterface(self.native_config, parameter_overrides=overrides)
+        else:
+            self.backend = VegaInterface(self.native_config)
         self.zeff = float(self.backend.fiducial["z_eff"])
         self.mapping = dict(self.parameter_mapping)
         # A public parameter may feed several native ones (e.g. one SiII
@@ -58,8 +98,6 @@ class VegaLikelihood(Likelihood):
             raise ValueError(f"native Vega parameters cannot be both mapped and fixed: {sorted(overlap)}")
         # Kaiser silicon model shared with P1D: Vega's silicon parameters are
         # the cup1d histories (same public parameters) evaluated at z_eff.
-        self.metal_parameters = {}
-        self._kaiser = None
         if self.metal_model:
             self._setup_metal_model(natives)
         self.params = {name: None for name in self.public_parameters}
@@ -116,19 +154,13 @@ class VegaLikelihood(Likelihood):
     _SILICON = {"SiIII": "SiIII(1207)", "SiIIa": "SiII(1190)",
                 "SiIIb": "SiII(1193)", "SiIIc": "SiII(1260)"}
 
-    def _setup_metal_model(self, natives):
+    def _load_metal_model(self):
         """Load the cup1d Kaiser silicon model whose histories feed Vega.
-
-        Parameters
-        ----------
-        natives : list of str
-            Native Vega names already set by ``parameter_mapping``.
 
         Raises
         ------
         ValueError
-            If the cup1d configuration does not use the Kaiser metal model, or a
-            silicon parameter is also set by ``parameter_mapping``.
+            If the cup1d configuration does not use the Kaiser metal model.
         """
         from cup1d.models.contaminants.metals.si_kaiser import FAMILIES
         from cup1d.models.contaminants.model_contaminants import Contaminants
@@ -142,6 +174,46 @@ class VegaLikelihood(Likelihood):
         # Same public names as the P1D likelihood (``p1d_<native>``).
         self.metal_parameters = {"p1d_" + name: name for name in nuisance
                                  if name.rsplit("_", 1)[0] in FAMILIES}
+        # The SiII x SiII factor and decorrelation are passed to Vega only when free in P1D
+        self._sii_x_sii_free = any(name.rsplit("_", 1)[0] in ("f_SiIIxSiII", "sig_SiIIxSiII")
+                                   for name in self.metal_parameters.values())
+
+    def _native_metal_point(self, point):
+        """Return the native cup1d metal values of a public point.
+
+        Parameters
+        ----------
+        point : mapping
+            Public parameter values; it must hold every shared ``p1d_`` metal parameter.
+
+        Returns
+        -------
+        dict
+            Native cup1d name to value.
+
+        Raises
+        ------
+        ValueError
+            If a shared metal parameter is missing.
+        """
+        missing = sorted(set(self.metal_parameters) - set(point))
+        if missing:
+            raise ValueError(f"metal_alpha_reference lacks the shared metal parameters {missing}")
+        return {native: float(point[public]) for public, native in self.metal_parameters.items()}
+
+    def _setup_metal_model(self, natives):
+        """Check the silicon routing to Vega and set the velocity conversion.
+
+        Parameters
+        ----------
+        natives : list of str
+            Native Vega names already set by ``parameter_mapping``.
+
+        Raises
+        ------
+        ValueError
+            If a silicon parameter is also set by ``parameter_mapping``.
+        """
         derived = [f"{kind}_{line}" for line in self._SILICON.values()
                    for kind in ("bias", "beta")]
         overlap = set(derived) & set(natives)
@@ -169,7 +241,12 @@ class VegaLikelihood(Likelihood):
             ``bias_<line>`` and ``beta_<line>`` at Vega's effective redshift,
             and ``forestflow_metal_decorrelation``: the line-of-sight
             decorrelation of Lya x each line (Mpc/h), which the Vega fork
-            applies to Lya x metal correlations only.
+            applies to Lya x metal correlations only. When the P1D model frees
+            the SiII x SiII amplitude factor and decorrelation (``f_SiIIxSiII``,
+            ``sig_SiIIxSiII``), also ``forestflow_metal_sii_factor`` and
+            ``forestflow_metal_sii_decorrelation`` (Mpc/h), which the Vega fork
+            applies to the SiII autos and SiII x SiII crosses only; otherwise
+            they are left unset, so Vega's SiII x SiII terms follow the biases.
 
         Notes
         -----
@@ -187,6 +264,11 @@ class VegaLikelihood(Likelihood):
             values[f"beta_{name}"] = beta
             decorrelation[name] = sigma * self.kms_to_Mpch
         values["forestflow_metal_decorrelation"] = decorrelation
+        if self._sii_x_sii_free:
+            values["forestflow_metal_sii_factor"] = float(
+                self._kaiser.get_value("f_SiIIxSiII", self.zeff, native))
+            values["forestflow_metal_sii_decorrelation"] = float(
+                self._kaiser.get_value("sig_SiIIxSiII", self.zeff, native)) * self.kms_to_Mpch
         return values
 
     def get_can_support_params(self):
@@ -314,3 +396,87 @@ class VegaLikelihood(Likelihood):
         if "include_priors" in inspect.signature(self.backend.chi2).parameters:
             return self.backend.chi2(values, include_priors=False)
         return self.backend.chi2(values) - self.backend.compute_prior_chi2(values)
+
+
+def reference_point(reference):
+    """Return the public parameter values of a reference point.
+
+    Parameters
+    ----------
+    reference : str, pathlib.Path or mapping
+        A result file written by :meth:`lya_interface.fit.Fit.save` (its best-fit
+        point is used), or a mapping of public parameter values.
+
+    Returns
+    -------
+    dict
+        Public parameter name to value.
+
+    Raises
+    ------
+    ValueError
+        If the file holds no best-fit point.
+    """
+    if isinstance(reference, dict):
+        return dict(reference)
+    from pathlib import Path
+
+    content = np.load(Path(reference).expanduser(), allow_pickle=True).item()
+    if "best_fit" in content:
+        return dict(content["best_fit"]["point"])
+    raise ValueError(f"{reference} is not a Fit result file (no best_fit point)")
+
+
+def main_config_zeff(native_config):
+    """Return the effective redshift ``zeff`` of a Vega main config, without building Vega.
+
+    Parameters
+    ----------
+    native_config : str
+        Vega main INI, resolved as Vega does.
+
+    Returns
+    -------
+    float
+        ``zeff`` of its ``[data sets]`` section.
+    """
+    import configparser
+
+    from vega import utils
+
+    config = configparser.ConfigParser()
+    config.optionxform = lambda option: option
+    config.read(utils.find_file(native_config))
+    return config["data sets"].getfloat("zeff")
+
+
+def metal_amplitude_exponents(kaiser, native, z, dz=1e-3):
+    """Return the amplitude exponent of each silicon line, Vega's ``b ~ (1 + z)**alpha``.
+
+    The exponent is the logarithmic slope of the cup1d bias history,
+    ``alpha = d ln|b| / d ln(1 + z)``, by a central difference at ``z``. In
+    both codes the growth of the matter perturbations is applied separately, so
+    the exponents describe the same quantity; they agree with the cup1d history
+    to first order around ``z``.
+
+    Parameters
+    ----------
+    kaiser : cup1d.models.contaminants.metals.si_kaiser.SiKaiser
+        Kaiser silicon model with the cup1d histories.
+    native : mapping
+        Native cup1d coefficient values (``b_<line>_<i>``, ...).
+    z : float
+        Redshift of the slope (Vega's effective redshift).
+    dz : float, default=1e-3
+        Half step of the central difference.
+
+    Returns
+    -------
+    dict
+        cup1d line name (``SiIII``, ``SiIIa``, ...) to exponent.
+    """
+    upper = kaiser.coefficients(z + dz, native)
+    lower = kaiser.coefficients(z - dz, native)
+    step = np.log((1 + z + dz) / (1 + z - dz))
+    return {line: float(np.log(abs(upper[line][0]) / abs(lower[line][0])) / step)
+            for line in upper}

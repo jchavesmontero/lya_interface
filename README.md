@@ -10,6 +10,13 @@ retains Vega's fixed native linear template, so this is a hybrid approximation
 rather than a cosmology-consistent template replacement. Do not combine this
 with the compressed `cobaya_lya_p1d` likelihood for the same data.
 
+With the cup1d Kaiser silicon model (`metal_model`), P1D and Vega share one set
+of silicon parameters. The correspondence between the two codes, the settings it
+requires, the remaining differences (redshift evolution through `alpha_<line>`,
+CIV, damping options, units) and the approximations of each code are listed in
+[Silicon metals in cup1d and Vega](docs/metals_cup1d_vega.md). For a joint
+P1D + ξ3D fit, fit P1D first and pass the saved fit as `metal_alpha_reference`.
+
 ## Install and run
 
 Use Python 3.12+ and compatible sibling checkouts. cup1d **must include the new
@@ -185,6 +192,7 @@ weights, histories and observations. Missing assets are not successful validatio
 - [Architecture](docs/architecture.md)
 - [Parameter mapping](docs/parameter_mapping.md)
 - [Scientific conventions](docs/scientific_conventions.md)
+- [Silicon metals in cup1d and Vega](docs/metals_cup1d_vega.md)
 - [Validation and limitations](docs/validation.md)
 
 Please cite Cobaya, CAMB, ForestFlow, cup1d/LaCE, the Arinyo flux-power model,
