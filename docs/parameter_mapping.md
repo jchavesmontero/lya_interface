@@ -14,7 +14,9 @@ initialization. Cobaya additionally rejects unassigned sampled parameters.
 | igm_gamma_i | gamma_i | IGM/ForestFlowTheory | fiducial gamma rescaling coefficient |
 | igm_sigT_kms_i | sigT_kms_i | IGM/ForestFlowTheory | fiducial thermal-history rescaling coefficient, not km/s itself |
 | igm_kF_kms_i | kF_kms_i | IGM/ForestFlowTheory | fiducial pressure-history coefficient, not inverse km/s itself |
-| p1d_<native coefficient> | native coefficient | nuisance/Cup1DLikelihood | native metal, HCD or resolution coefficient |
+| metal_<native coefficient> | native coefficient | nuisance/Cup1DLikelihood and VegaLikelihood | Kaiser silicon coefficient (`b_`, `beta_`, `sig_`, `f_SiIIxSiII`, `sig_SiIIxSiII`), one parameter shared by P1D and xi3D |
+| p1d_<native coefficient> | native coefficient | nuisance/Cup1DLikelihood | P1D-only metal template, HCD or resolution coefficient |
+| xi3d_<name> | Vega native name (`parameter_mapping`) | VegaLikelihood | xi3D-only Vega nuisance; `ap` and `at` keep their names |
 | Delta2star | Delta2_star | derived/LyaCosmology | dimensionless linear-power amplitude |
 | nstar | n_star | derived/LyaCosmology | log slope |
 | alphastar | alpha_star | derived/LyaCosmology | log curvature, not primordial running |
@@ -25,6 +27,10 @@ coefficient ordering, smoothing and fiducial histories. In the demo,
 `tau_eff_otype: exp` makes the pivot coefficient a log multiplier of fiducial tau;
 the other three `const` coefficients directly multiply their physical fiducial
 histories. References are therefore 0 and 1, not physical IGM quantities.
+
+Results saved before the `metal_`/`xi3d_` prefixes (Kaiser metals as `p1d_*`, Vega
+nuisances with bare names) are translated by `lya_interface.names.translate_legacy`,
+which `Fit.from_results` and `metal_alpha_reference` apply.
 
 All configured coefficients are explicitly fixed or sampled by Cobaya. Terms
 with zero native free coefficients retain the selected native fixed values. To

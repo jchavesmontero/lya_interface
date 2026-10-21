@@ -245,6 +245,27 @@ def vega_component(model):
     return next((x for x in model.likelihood.values() if isinstance(x, VegaLikelihood)), None)
 
 
+def vega_inputs(model, vega, point):
+    """Return Vega's public input values at ``point``, with fixed ones from the model.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Model holding the fixed parameter values (e.g. ``ap``, ``at`` at fixed cosmology).
+    vega : VegaLikelihood
+        Vega component of ``model``.
+    point : mapping
+        Sampled parameter values.
+
+    Returns
+    -------
+    dict
+        Every name of ``vega.public_parameters`` to its value.
+    """
+    values = {**model.parameterization.constant_params(), **point}
+    return {name: values[name] for name in vega.public_parameters}
+
+
 def _gof(chi2, ndata, nfit):
     from scipy.stats import chi2 as chi2_distribution
     dof = int(ndata) - int(nfit)
@@ -287,6 +308,50 @@ def format_goodness_of_fit(statistics, *, multiline=False):
     data_terms = "; ".join(filter(None, (one("P1D", statistics.p1d), one("BAO", statistics.bao))))
     joint = one("joint", statistics.joint)
     return data_terms + ("\n" if multiline and data_terms else "; ") + joint
+
+
+def near_prior_bounds(model, point, fraction=0.02):
+    """Return the sampled parameters close to a hard bound of their prior.
+
+    Parameters
+    ----------
+    model : cobaya.model.Model
+        Model whose priors define the bounds: flat priors, and the truncation
+        edges of truncated Gaussian priors.
+    point : mapping
+        Physical value of every sampled parameter.
+    fraction : float, default=0.02
+        Maximum distance to a bound, as a fraction of the prior range.
+
+    Returns
+    -------
+    list of dict
+        One entry per parameter and bound: ``name``, ``value``, ``side``
+        (``'lower'``/``'upper'``), ``bound``, ``distance`` (fraction of the range)
+        and ``prior`` (Cobaya distribution name), closest first.
+    """
+    rows = []
+    names = list(model.parameterization.sampled_params())
+    for name, (low, high), pdf in zip(names, model.prior.bounds(), model.prior.pdf):
+        if not (np.isfinite(low) and np.isfinite(high)):
+            continue
+        value = float(point[name])
+        for side, bound in (("lower", low), ("upper", high)):
+            distance = abs(value - bound) / (high - low)
+            if distance <= fraction:
+                rows.append(dict(name=name, value=value, side=side, bound=float(bound),
+                                 distance=float(distance), prior=pdf.dist.name))
+    return sorted(rows, key=lambda row: row["distance"])
+
+
+def format_near_prior_bounds(rows, fraction=0.02):
+    """Format :func:`near_prior_bounds` output, one parameter per line."""
+    if not rows:
+        return f"No sampled parameter within {fraction:.0%} of the prior range from a bound."
+    lines = [f"Sampled parameters within {fraction:.0%} of the prior range from a bound:"]
+    lines += [f"  {r['name']:24s} {r['value']: .6g}  ({r['side']} {r['prior']} bound {r['bound']:.6g}, "
+              f"{r['distance']:.2%} of the range)" for r in rows]
+    return "\n".join(lines)
 
 
 def plot_point_with_residuals(model, point, ncols=4, title=None):
@@ -755,7 +820,7 @@ def plot_vega_point(model, point, title=None):
     if vega is None:
         raise ValueError("the model has no Vega likelihood")
     model.logposterior(point, return_derived=False)
-    values = vega.parameters_for_evaluation({name: point[name] for name in vega.public_parameters})
+    values = vega.parameters_for_evaluation(vega_inputs(model, vega, point))
     correlations = vega.backend.compute_model(values, run_init=False)
     prefix = "" if title is None else title + "\n"
     summary = prefix + format_goodness_of_fit(goodness_of_fit(model, point), multiline=True)
@@ -940,7 +1005,7 @@ def _gauss_newton_hessian(model, names, lower, width, center, step):
         else:
             model.logposterior(point, return_derived=False)
         if vega is not None:
-            values = vega.parameters_for_evaluation({n: point[n] for n in vega.public_parameters})
+            values = vega.parameters_for_evaluation(vega_inputs(model, vega, point))
             cf = vega.backend.compute_model(values, run_init=False)
             pieces.append(np.concatenate([np.asarray(cf[n])[vega.backend.data[n].model_mask]
                                           for n in vega.backend.corr_items]))

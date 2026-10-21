@@ -5,6 +5,7 @@ import numpy as np
 from cup1d.utils.ic_files import get_ic_path
 from cup1d.utils.utils import split_string
 from lya_interface.adapters.cup1d_backend import native_configuration
+from lya_interface.names import native_name
 
 
 def _native_args(info):
@@ -83,9 +84,10 @@ def save_global_ic(info, point, filename=None, variation=None, overwrite=False):
         if public in ("As", "ns"):
             out[public] = {"val": float(value)}
             continue
-        if not public.startswith(("igm_", "p1d_")):
+        native = native_name(public)
+        if native is None:
             continue
-        family, index = split_string(public.split("_", 1)[1])
+        family, index = split_string(native)
         families.setdefault(family, []).append((_node(args, family, index, public), float(value)))
     for family, rows in families.items():
         rows.sort()
@@ -93,6 +95,42 @@ def save_global_ic(info, point, filename=None, variation=None, overwrite=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     np.save(path, out, allow_pickle=True)
     return path
+
+
+def is_global_ic(content):
+    """Return whether a loaded ``.npy`` dictionary is a cup1d global IC file."""
+    return (isinstance(content, dict) and bool(content)
+            and all(isinstance(entry, dict) and "val" in entry for entry in content.values()))
+
+
+def ic_native_values(args, names, ic):
+    """Interpolate a cup1d global IC onto native coefficients.
+
+    Parameters
+    ----------
+    args : cup1d.configuration.args.Args
+        Native arguments that fix the redshift node of every coefficient.
+    names : iterable of str
+        Native coefficient names (``b_SiIII_0``, ...).
+    ic : dict
+        Loaded global IC (``{family: {"z": nodes, "val": values}}``).
+
+    Returns
+    -------
+    values : dict
+        Native name to the IC history at its node, for the families in ``ic``.
+    missing : list of str
+        Names whose family the IC does not store.
+    """
+    values, missing = {}, []
+    for native in names:
+        family, index = split_string(native)
+        if family not in ic:
+            missing.append(native)
+            continue
+        znode = _node(args, family, index, native)
+        values[native] = float(np.interp(znode, ic[family]["z"], ic[family]["val"]))
+    return values, missing
 
 
 def global_ic_point(info, reference, ic_file=None):
@@ -149,7 +187,7 @@ def global_ic_point(info, reference, ic_file=None):
             if public in ic:
                 point[public] = float(ic[public]["val"])
             continue
-        native = public.split("_", 1)[1] if public.startswith(("igm_", "p1d_")) else None
+        native = native_name(public)
         if native is None:
             continue
         family, index = split_string(native)

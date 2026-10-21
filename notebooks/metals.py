@@ -107,7 +107,7 @@ vega = vega_component(model)
 p1d = cup1d_component(model)
 kaiser = p1d.backend.model_cont.metal_models["Si_kaiser"]
 reference_point = global_ic_point(fit.info, fit.reference)
-METALS = [name for name in fit.reference if name.startswith(("p1d_b_Si", "p1d_beta_Si", "p1d_sig_Si"))]
+METALS = [name for name in fit.reference if name.startswith("metal_")]
 display({name: reference_point[name] for name in METALS})
 print("km/s -> Mpc/h for Vega:", vega.kms_to_Mpch)
 
@@ -141,7 +141,7 @@ def p1d_state(point):
 METAL_BOOST = 3.0
 point = dict(reference_point)
 for name in METALS:
-    if name.startswith("p1d_b_Si"):
+    if name.startswith("metal_b_Si"):
         point[name] += np.log(METAL_BOOST)  # coefficients are ln|b|
 prediction, nuisance = p1d_state(point)
 snapshot = model.provider.get_result("lya_cosmology")
@@ -379,7 +379,7 @@ def family_point(family, kind, value):
     """Reference point with every node of ``family`` changed."""
     point = dict(reference_point)
     for name in fit.reference:
-        if name.startswith(f"p1d_{family}_"):
+        if name.startswith(f"metal_{family}_"):
             if kind == "factor":
                 point[name] = reference_point[name] + np.log(value)
             elif family.startswith("sig_"):

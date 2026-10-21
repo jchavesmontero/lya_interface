@@ -1,6 +1,7 @@
 # CM2026 baseline with the cup1d forest_mpg_gp emulator (DESI DR1 P1D only) and the
 # line-of-sight Kaiser silicon model (ln|b| and ln sigma, two z nodes each)
-# instead of the CM2026 silicon templates.
+# instead of the CM2026 silicon templates (free SiII x SiII factor and
+# decorrelation, ln f and ln sigma/km/s with two nodes each).
 # As and ns priors are the native cosmo_prior_nsigma=2 ranges (training mean +- 2 sigma).
 # Fixed cosmology: LaCE/cup1d Planck18_noBAO (Planck 2018 TT,TE,EE+lowE+lensing,
 # mnu = 0.06 eV), the cosmology of the Vega DR2 template; As/ns references and
@@ -87,53 +88,69 @@ params: &definitions
     prior: {min: 0.8131443815883004, max: 1.2962930152539578}
     ref: 1
     proposal: 0.005
-  p1d_b_SiIII_0:
+  metal_b_SiIII_0:
     prior: {min: -12.0, max: -2.0}
     ref: -4.906
     proposal: 0.05
-  p1d_b_SiIII_1:
+  metal_b_SiIII_1:
     prior: {min: -12.0, max: -2.0}
     ref: -4.906
     proposal: 0.05
-  p1d_b_SiIIa_0:
+  metal_b_SiIIa_0:
     prior: {min: -12.0, max: -2.0}
     ref: -5.259
     proposal: 0.05
-  p1d_b_SiIIa_1:
+  metal_b_SiIIa_1:
     prior: {min: -12.0, max: -2.0}
     ref: -5.259
     proposal: 0.05
-  p1d_b_SiIIb_0:
+  metal_b_SiIIb_0:
     prior: {min: -12.0, max: -2.0}
     ref: -6.032
     proposal: 0.05
-  p1d_b_SiIIb_1:
+  metal_b_SiIIb_1:
     prior: {min: -12.0, max: -2.0}
     ref: -6.032
     proposal: 0.05
-  p1d_b_SiIIc_0:
+  metal_b_SiIIc_0:
     prior: {min: -12.0, max: -2.0}
     ref: -5.382
     proposal: 0.05
-  p1d_b_SiIIc_1:
+  metal_b_SiIIc_1:
     prior: {min: -12.0, max: -2.0}
     ref: -5.382
     proposal: 0.05
-  p1d_sig_SiIII_0:
+  metal_sig_SiIII_0:
     prior: {min: 0.0, max: 7.0}
     ref: 4.605
     proposal: 0.05
-  p1d_sig_SiIII_1:
+  metal_sig_SiIII_1:
     prior: {min: 0.0, max: 7.0}
     ref: 4.605
     proposal: 0.05
-  p1d_sig_SiII_0:
+  metal_sig_SiII_0:
     prior: {min: 0.0, max: 7.0}
     ref: 4.605
     proposal: 0.05
-  p1d_sig_SiII_1:
+  metal_sig_SiII_1:
     prior: {min: 0.0, max: 7.0}
     ref: 4.605
+    proposal: 0.05
+  metal_f_SiIIxSiII_0:
+    prior: {min: -5.0, max: 5.0}
+    ref: 0.0
+    proposal: 0.05
+  metal_f_SiIIxSiII_1:
+    prior: {min: -5.0, max: 5.0}
+    ref: 0.0
+    proposal: 0.05
+  metal_sig_SiIIxSiII_0:
+    prior: {min: 0.0, max: 7.0}
+    ref: 1.0  # ~2.7 km/s: negligible decorrelation, so fits without SiII x SiII warm-start unchanged
+    proposal: 0.05
+  metal_sig_SiIIxSiII_1:
+    prior: {min: 0.0, max: 7.0}
+    ref: 1.0  # ~2.7 km/s: negligible decorrelation, so fits without SiII x SiII warm-start unchanged
     proposal: 0.05
   p1d_HCD_damp1_0:
     prior: {min: -10, max: -0.03}

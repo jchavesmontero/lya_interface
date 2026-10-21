@@ -42,7 +42,7 @@ enter through the metal distortion matrices.
   both contain "SiII", which includes SiIII(1207)), `fast_metals = False`, and the
   four silicon lines in `in tracer1/2` of `[metals]`.
 - `VegaLikelihood`: `metal_model` set to the cup1d configuration of the P1D
-  likelihood, so both read the same `p1d_` parameters.
+  likelihood, so both read the same `metal_` parameters.
 
 `examples/vega_dr2_lyaxlya_forestflow_kaiser.ini` and
 `examples/vega_dr2_lya_forestflow_kaiser_main.ini` follow these settings.
@@ -79,8 +79,8 @@ set by `metal_alpha_reference` of `VegaLikelihood`:
 
 - unset: the `alpha_<line>` of the Vega INI (1 in the examples) are used,
   independently of the cup1d histories;
-- a P1D fit saved with `lya_interface.fit.Fit.save` (or a mapping of public
-  `p1d_` values): before Vega is built, each `alpha_<line>` is set to the slope
+- a P1D fit saved with `lya_interface.fit.Fit.save`, a mapping of public
+  `metal_` values, or a cup1d global initial-conditions file: before Vega is built, each `alpha_<line>` is set to the slope
   `d ln abs(b) / d ln(1 + z)` of the cup1d history at that point and `z_eff`
   (`metal_amplitude_exponents`; growth is applied separately in both codes, so
   the exponents describe the same quantity). The derived values are logged and
@@ -96,16 +96,67 @@ likelihood:
     metal_alpha_reference: <P1D fit result written by Fit.save>
 ```
 
-Remaining differences: the exponents do not follow the sampled point of the joint
-fit, and a power law matches a node-interpolated history only to first order
-around `z_eff`.
+`Fit(config, metal_alpha_reference=...)` overrides the configured reference
+without editing the YAML. A fit result or mapping is stored as its `metal_`
+values, which `Fit.save` records and `Fit.from_results` reapplies, so a result
+file can be the reference of the run that overwrites it. Only the silicon biases
+`metal_b_<line>_<i>` are required; other `metal_` parameters missing from the
+reference keep their fiducial values, which do not affect the exponents.
+`notebooks/joint_DR1P1D_DR2BAO` passes its `START_FROM` (the variation's own
+saved fit when it exists), so the exponents and the starting point come from the
+same fit, and after minimizing it prints the frozen exponents next to those of
+the new best fit (`VegaLikelihood.metal_alpha_at`).
+
+The exponents do not follow the sampled point, so they are self-consistent only
+at a fixed point: rerun (each run takes them from the previous best fit) until
+the two agree. They matter. For example, for
+`joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta_rmin10_fixcosmo`
+(2026-10-21; 300 evaluations, not converged):
+
+| `alpha_<line>` at `z_eff = 2.33` | SiIII(1207) | SiII(1190) | SiII(1193) | SiII(1260) |
+|---|---|---|---|---|
+| Kaiser global IC (P1D-only fit of notebook 06) | 0.27 | 1.96 | −0.94 | 2.78 |
+| best fit of that joint run | 0.32 | 5.82 | 1.10 | −1.51 |
+
+At that best fit, `-2 log L` rises from 2956.2 (IC exponents, those of the fit)
+to 2989.0 with its own exponents: joint fits run with the IC exponents are not
+self-consistent and must be rerun.
+
+A power law also matches a node-interpolated history only to first order around
+`z_eff`.
+
+### Metal parameters other than the biases: no redshift evolution in Vega
+
+The exponents carry only the bias histories. Every other cup1d metal history is
+evaluated at `z_eff` and applied in Vega as a constant over the redshift range
+of the pixel pairs, whereas cup1d evaluates it at each P1D redshift:
+
+| cup1d history | Vega | Evolution in Vega |
+|---|---|---|
+| `beta_<species>` | `beta_<line>` in the metal correlation at `z0 = z_eff` | none (fixed at 0.5 in `kaiser_fixed_beta`, so no difference there) |
+| `sig_<species>` (Lyα × metal damping) | `exp(-(k_par sigma)^2 / 2)` on Lyα × metal, at run time | none |
+| `f_SiIIxSiII` | factor on the SiII × SiII correlations, at run time | none |
+| `sig_SiIIxSiII` | `exp(-(k_par sigma)^2 / 2)` on SiII × SiII, at run time | none |
+
+These are not in the metal matrices (which hold only the amplitude evolution of
+each leg and the growth), so they need no exponents, but their evolution is
+lost. A damping scale cannot be written as an amplitude exponent at all. The
+evolution of `f_SiIIxSiII` is an amplitude, but it multiplies only the SiII ×
+SiII pairs; the per-line `alpha_<line>` also enter the Lyα × SiII pairs, so it
+would need a pair-specific exponent, which Vega does not have.
+
+Size at the fixed-cosmology `RMIN = 10` best fit above: `f_SiIIxSiII = 1.037` at
+`z_eff` with `d ln f / d ln(1 + z) = −0.09` (about 1–2% over the pixel redshift
+range, on an already small term), and `sig_SiIIxSiII = 2.7` km/s with no
+evolution (negligible decorrelation). Recheck if `f_SiIIxSiII` develops a strong
+evolution or the `sig_<species>` histories differ much between their nodes.
 
 ## Other differences
 
 | Item | cup1d | Vega fork | Impact |
 |---|---|---|---|
 | CIV(eff) | not modelled | auto-correlation included | Vega-only term |
-| Redshift of the model | each P1D redshift bin with its own histories and ForestFlow coefficients | one `z_eff` for `forestflow_dnl`, `k_p` and the metal parameters | evolution within the 3D sample only through `alpha` |
+| Redshift of the model | each P1D redshift bin with its own histories and ForestFlow coefficients | one `z_eff` for `forestflow_dnl`, `k_p` and the metal parameters | evolution within the 3D sample only through `alpha` (biases); betas, damping scales and the SiII × SiII factor do not evolve, see above |
 | Lyα × metal damping options | Gaussian (default) or sigmoid | Gaussian only | keep Gaussian for joint fits |
 | SiII × SiII selection | by species (`SiII`) | exact SiII line names (`SiIII` excluded) | same pairs |
 | `fast_metals = True` | — | metal × metal correlations frozen at the first evaluation (only the SiII × SiII factor and decorrelation are recomputed); the metal pressure would not follow `k_p` | keep `fast_metals = False` |

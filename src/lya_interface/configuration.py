@@ -36,6 +36,39 @@ def _flatten_parameter_sections(sections):
     return flat, mapping
 
 
+def _fix_parameters(info, fixed):
+    """Fix sampled parameters at given values, in ``params`` and every component registry.
+
+    Parameters
+    ----------
+    info : dict
+        Configuration with inherited flat ``params``; modified in place.
+    fixed : mapping
+        Public parameter name to its fixed value.
+
+    Raises
+    ------
+    ValueError
+        If ``params`` is not flat or a name is not a sampled parameter.
+    """
+    if not isinstance(fixed, dict) or not isinstance(info.get("params"), dict):
+        raise ValueError("fixed_parameters requires inherited flat params")
+    not_sampled = sorted(name for name in fixed if not (
+        isinstance(info["params"].get(name), dict) and "prior" in info["params"][name]))
+    if not_sampled:
+        raise ValueError(f"fixed_parameters must name sampled parameters: {not_sampled}")
+    # Components may hold their own copy of the definitions (YAML anchors):
+    # every copy must agree with params.
+    registries = [info["params"]] + [
+        options["parameter_definitions"]
+        for section in ("theory", "likelihood") for options in info.get(section, {}).values()
+        if isinstance(options, dict) and isinstance(options.get("parameter_definitions"), dict)]
+    for registry in {id(r): r for r in registries}.values():
+        for name, value in fixed.items():
+            if name in registry:
+                registry[name] = float(value)
+
+
 def load_configuration(path):
     """Load an interface YAML file and resolve inherited configuration.
 
@@ -53,8 +86,15 @@ def load_configuration(path):
     Raises
     ------
     ValueError
-        If an additional likelihood replaces an existing component or a
-        component duplicates the public parameter registry.
+        If an additional likelihood replaces an existing component, a
+        component duplicates the public parameter registry, or
+        ``fixed_parameters`` names a parameter that is not sampled.
+
+    Notes
+    -----
+    ``fixed_parameters`` (public name to value) turns sampled parameters of the
+    inherited configuration into fixed ones, in ``params`` and in every
+    component's ``parameter_definitions``.
     """
     path = Path(path).resolve()
     info = yaml_load_file(str(path))
@@ -77,6 +117,9 @@ def load_configuration(path):
         if duplicated:
             raise ValueError(f"parameter_overrides cannot replace existing parameters: {sorted(duplicated)}")
         info["params"] = {**info["params"], **overrides}
+    fixed = info.pop("fixed_parameters", {})
+    if fixed:
+        _fix_parameters(info, fixed)
     structured = info.pop("parameters", None)
     interface_mapping = None
     p1d_definitions = None
@@ -108,8 +151,9 @@ def load_configuration(path):
                                               for key, value in definitions.items()))
                     if interface_mapping is None and not subset_matches:
                         raise ValueError("component registry and public params definitions differ")
-                for key in ("native_config", "covariance_asset", "model_path", "transformation_path", "metal_model"):
-                    if options.get(key) and not Path(options[key]).is_absolute():
+                for key in ("native_config", "covariance_asset", "model_path", "transformation_path", "metal_model",
+                            "metal_alpha_reference"):
+                    if isinstance(options.get(key), str) and options[key] and not Path(options[key]).is_absolute():
                         candidates = [path.parent / options[key], path.parent.parent / options[key]]
                         # Config-relative assets first; repository-relative
                         # paths are retained for directly runnable examples.

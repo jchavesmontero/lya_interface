@@ -42,9 +42,16 @@ def test_joint_notebook_uses_dr2_vega_configuration_and_fit_workflow():
                                if not line.lstrip().startswith("%")))
     strings = {node.value for node in ast.walk(tree)
                if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-    assert "joint_dr1p1d_forestmpggp_dr2bao" in strings
-    for call in ("Fit(CONFIG)", "fit.minimize(", "fit.save(", "Fit.from_results(",
-                 "fit.plot_triangle(", "global_ic_point("):
+    configs = {s for s in strings if s.startswith("joint_dr1p1d_forestmpggp_dr2bao_lya")}
+    assert {"joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta",
+            "joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_free_beta"} <= configs
+    for name in configs:
+        assert (NOTEBOOKS.parent / "examples" / f"{name}.yaml").is_file()
+        if "_kaiser_" in name:
+            assert (NOTEBOOKS.parent / "examples" / f"{name}_rmin10.yaml").is_file()
+    for call in ("Fit(CONFIG, metal_alpha_reference=START_FROM)", "fit.minimize(", "fit.save(",
+                 "Fit.from_results(", "fit.plot_triangle(", "global_ic_point(",
+                 "default_ic_path(info, IC_VARIATION)", "vega.metal_alpha_at("):
         assert call in source
 
 

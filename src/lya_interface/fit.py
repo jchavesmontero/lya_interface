@@ -13,13 +13,15 @@ from cobaya.model import get_model
 
 from lya_interface.configuration import load_configuration
 from lya_interface.diagnostics import (
-    LocalErrors, PointFit, estimate_local_errors, goodness_of_fit, minimize_point,
-    plot_local_triangle, plot_star_ellipse, plot_vega_point, star_values,
+    LocalErrors, PointFit, estimate_local_errors, format_near_prior_bounds, goodness_of_fit,
+    minimize_point, near_prior_bounds, plot_local_triangle, plot_star_ellipse, plot_vega_point,
+    star_values,
 )
+from lya_interface.names import current_name, translate_legacy
 from lya_interface.provenance import file_identity
 
 FORMAT_VERSION = 1
-_ASSET_KEYS = ("native_config", "covariance_asset")
+_ASSET_KEYS = ("native_config", "covariance_asset", "metal_alpha_reference")
 
 
 def _examples_directory():
@@ -37,9 +39,27 @@ def _asset_digests(info):
                 continue
             for key in _ASSET_KEYS:
                 path = options.get(key)
-                if path and Path(path).is_file():
+                if isinstance(path, str) and path and Path(path).is_file():
                     digests[f"{name}.{key}"] = file_identity(path)["sha256"]
     return digests
+
+
+def _metal_alpha_reference(reference):
+    """Return a silicon-exponent reference in the form stored in the configuration.
+
+    A :meth:`Fit.save` result or a mapping becomes its shared ``metal_`` values, so
+    the reference survives its file being overwritten (e.g. by the fit that started
+    from it); a cup1d global IC file stays a resolved path.
+    """
+    from lya_interface.initial_conditions import is_global_ic
+    from lya_interface.likelihoods.vega import reference_point
+
+    if not isinstance(reference, dict):
+        reference = Path(reference).expanduser().resolve()
+        if is_global_ic(np.load(reference, allow_pickle=True).item()):
+            return str(reference)
+    return {name: float(value) for name, value in reference_point(reference).items()
+            if name.startswith("metal_")}
 
 
 class Fit:
@@ -53,6 +73,12 @@ class Fit:
         Remove ``derived: true`` parameter columns before building the model.
         The minimizer evaluates without derived values, which Cobaya cannot
         collect afterwards; star parameters are computed explicitly instead.
+    metal_alpha_reference : str, pathlib.Path or mapping, optional
+        Replaces the ``metal_alpha_reference`` of the Vega likelihood (the point
+        whose cup1d bias histories set Vega's silicon ``alpha_<line>``): a
+        :meth:`save` result (its best fit), a mapping of public values, or a cup1d
+        global IC file. A result or mapping is stored as its ``metal_`` values,
+        which :meth:`save` records and :meth:`from_results` reapplies.
 
     Attributes
     ----------
@@ -64,6 +90,8 @@ class Fit:
         The dependency graph. Close it with :meth:`close`.
     reference : dict
         Reference value of every sampled parameter.
+    metal_alpha_reference : dict, str or None
+        The override of the silicon-exponent reference, if any.
     best_fit : PointFit or None
         Result of :meth:`minimize`, or the restored fit.
     local_errors : LocalErrors or None
@@ -74,12 +102,25 @@ class Fit:
     FileNotFoundError
         If a configured calibrated covariance asset is missing; it is never
         silently disabled.
+    ValueError
+        If ``metal_alpha_reference`` is given without a Vega likelihood with a
+        ``metal_model``.
     """
 
-    def __init__(self, config_file, drop_derived=True):
+    def __init__(self, config_file, drop_derived=True, metal_alpha_reference=None):
         self.config_path = Path(config_file).expanduser().resolve()
         self.drop_derived = bool(drop_derived)
         self.info = load_configuration(self.config_path)
+        self.metal_alpha_reference = None
+        if metal_alpha_reference is not None:
+            targets = [options for name, options in self.info.get("likelihood", {}).items()
+                       if name.endswith("VegaLikelihood") and isinstance(options, dict)
+                       and options.get("metal_model")]
+            if not targets:
+                raise ValueError("metal_alpha_reference requires a Vega likelihood with metal_model")
+            self.metal_alpha_reference = _metal_alpha_reference(metal_alpha_reference)
+            for options in targets:
+                options["metal_alpha_reference"] = self.metal_alpha_reference
         if self.drop_derived:
             for name, definition in tuple(self.info["params"].items()):
                 if isinstance(definition, dict) and definition.get("derived") is True:
@@ -121,6 +162,28 @@ class Fit:
         self.best_fit = minimize_point(self.model, self.initial_point, **options)
         self.local_errors = None
         return self.best_fit
+
+    def near_bounds(self, fraction=0.02, verbose=True):
+        """Return the sampled parameters of the best fit close to a prior bound.
+
+        Parameters
+        ----------
+        fraction : float, default=0.02
+            Maximum distance to a bound, as a fraction of the prior range.
+        verbose : bool, default=True
+            Print them (or that there are none).
+
+        Returns
+        -------
+        list of dict
+            As :func:`lya_interface.diagnostics.near_prior_bounds`.
+        """
+        if self.best_fit is None:
+            raise ValueError("run minimize() or restore a fit first")
+        rows = near_prior_bounds(self.model, self.best_fit.point, fraction)
+        if verbose:
+            print(format_near_prior_bounds(rows, fraction))
+        return rows
 
     def estimate_errors(self, method="gauss_newton", **options):
         """Run :func:`estimate_local_errors` at the best fit and store them.
@@ -196,8 +259,9 @@ class Fit:
         """Write the fit to a NumPy result file.
 
         The file stores the configuration path and digests of the configuration
-        and its scientific assets, the best-fit point and summary, the initial
-        point and, when available, the local errors. Chains, models and
+        and its scientific assets, the override of the silicon-exponent reference,
+        the best-fit point and summary, the initial point and, when available, the
+        local errors. Chains, models and
         emulators are never written.
 
         Parameters
@@ -220,6 +284,7 @@ class Fit:
             "config_sha256": file_identity(self.config_path)["sha256"],
             "asset_sha256": _asset_digests(self.info),
             "drop_derived": self.drop_derived,
+            "metal_alpha_reference": self.metal_alpha_reference,
             "initial_point": self.initial_point,
             "best_fit": {
                 "point": dict(fit.point),
@@ -257,7 +322,8 @@ class Fit:
         Returns
         -------
         Fit
-            New fit with its model built, ``best_fit`` restored (goodness of fit
+            New fit with its model built (with the recorded silicon-exponent
+            reference, if any), ``best_fit`` restored (goodness of fit
             recomputed) and ``local_errors`` restored when saved.
 
         Warns
@@ -307,7 +373,8 @@ class Fit:
         if not selected.is_file():
             raise FileNotFoundError(f"Configuration not found: {selected}")
 
-        fit = cls(selected, drop_derived=payload.get("drop_derived", True))
+        fit = cls(selected, drop_derived=payload.get("drop_derived", True),
+                  metal_alpha_reference=payload.get("metal_alpha_reference"))
         if "config_sha256" in payload and \
                 file_identity(selected)["sha256"] != payload["config_sha256"]:
             warnings.warn(f"Configuration {selected} changed since the fit was saved.",
@@ -319,7 +386,8 @@ class Fit:
             warnings.warn(f"Assets changed since the fit was saved: {changed}", stacklevel=2)
 
         saved = payload["best_fit"]
-        point = {name: float(value) for name, value in saved["point"].items()}
+        # Results saved before the metal_/xi3d_ prefixes use the old public names.
+        point = {name: float(value) for name, value in translate_legacy(saved["point"]).items()}
         if set(point) != set(fit.reference):
             fit.close()
             raise ValueError(
@@ -342,11 +410,14 @@ class Fit:
             minus2,
             statistics,
         )
-        fit.initial_point = payload.get("initial_point")
+        initial = payload.get("initial_point")
+        fit.initial_point = None if initial is None else translate_legacy(initial)
         errors = payload.get("local_errors")
         if errors is not None:
-            fit.local_errors = LocalErrors(dict(errors["errors"]), np.asarray(errors["covariance"]),
-                                           np.asarray(errors["hessian"]), tuple(errors["names"]))
+            fit.local_errors = LocalErrors(translate_legacy(errors["errors"]),
+                                           np.asarray(errors["covariance"]),
+                                           np.asarray(errors["hessian"]),
+                                           tuple(current_name(n) for n in errors["names"]))
             fit.error_method = errors.get("method")
         fit.results_path = str(path)
         return fit

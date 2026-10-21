@@ -24,11 +24,11 @@ interface_base: cup1d_forestmpggp_kaiser_beta_evaluate.yaml
 parameter_overrides:
   ap: {prior: {min: 0.5, max: 1.5}, ref: 1.0, proposal: 0.01}
   at: {prior: {min: 0.5, max: 1.5}, ref: 1.0, proposal: 0.01}
-  bias_hcd: {prior: {min: -1.0, max: 0.0}, ref: -0.05, proposal: 0.01}
-  desi_inst_sys_amp: {prior: {min: 0.0, max: 0.01}, ref: 0.0001, proposal: 5e-05}
-  beta_hcd: {prior: {dist: truncnorm, a: -5.555555556, b: 50, loc: 0.5, scale: 0.09}, ref: 0.5, proposal: 0.02}
-  L0_hcd: {prior: {dist: truncnorm, a: -5, b: 10, loc: 5.0, scale: 1.0}, ref: 5.0, proposal: 0.1}
-  bias_CIV_eff: {prior: {dist: truncnorm, a: -96.2, b: 3.8, loc: -0.019, scale: 0.005}, ref: -0.019, proposal: 0.001}
+  xi3d_bias_hcd: {prior: {min: -1.0, max: 0.0}, ref: -0.05, proposal: 0.01}
+  xi3d_desi_inst_sys_amp: {prior: {min: 0.0, max: 0.01}, ref: 0.0001, proposal: 5e-05}
+  xi3d_beta_hcd: {prior: {dist: truncnorm, a: -5.555555556, b: 50, loc: 0.5, scale: 0.09}, ref: 0.5, proposal: 0.02}
+  xi3d_L0_hcd: {prior: {dist: truncnorm, a: -5, b: 10, loc: 5.0, scale: 1.0}, ref: 5.0, proposal: 0.1}
+  xi3d_bias_CIV_eff: {prior: {dist: truncnorm, a: -96.2, b: 3.8, loc: -0.019, scale: 0.005}, ref: -0.019, proposal: 0.001}
 
 additional_likelihoods:
   lya_interface.likelihoods.vega.VegaLikelihood:
@@ -42,11 +42,11 @@ additional_likelihoods:
     parameter_mapping:
       ap: ap
       at: at
-      bias_hcd: bias_hcd
-      desi_inst_sys_amp: desi_inst_sys_amp
-      beta_hcd: beta_hcd
-      L0_hcd: L0_hcd
-      bias_CIV_eff: 'bias_CIV(eff)'
+      xi3d_bias_hcd: bias_hcd
+      xi3d_desi_inst_sys_amp: desi_inst_sys_amp
+      xi3d_beta_hcd: beta_hcd
+      xi3d_L0_hcd: L0_hcd
+      xi3d_bias_CIV_eff: 'bias_CIV(eff)'
     # QSO-only parameters do not enter Lya x Lya. Their native Gaussian priors
     # are kept fixed at the prior means, so they add a constant only.
     fixed_native_parameters:

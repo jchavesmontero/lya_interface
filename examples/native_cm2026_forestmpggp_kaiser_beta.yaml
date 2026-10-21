@@ -3,6 +3,7 @@
 # Like the DR1 metal and HCD parameters, the magnitude of each silicon flux bias
 # (ln|b|) and each species' line-of-sight decorrelation (ln sigma/km/s) have two
 # nodes interpolated linearly in z (exp output, power-law-like evolution).
+# The SiII x SiII amplitude factor and decorrelation are free too (two nodes each).
 # beta_SiIII and beta_SiII are free (one node each).
 # Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
 fid_cosmo_label: Planck18_noBAO
@@ -69,3 +70,14 @@ fid_cont:
   beta_SiII_ztype: interp_lin
   beta_SiII_otype: const
   beta_SiII_fixed: false
+  # SiII x SiII terms (SiII autos and crosses between SiII lines): free amplitude
+  # factor (ln f) and line-of-sight decorrelation (ln sigma/km/s), two nodes each,
+  # needed in the cup1d P1D fits; Vega receives their values at z_eff.
+  n_f_SiIIxSiII: 2
+  f_SiIIxSiII_ztype: interp_lin
+  f_SiIIxSiII_otype: exp
+  f_SiIIxSiII_fixed: false
+  n_sig_SiIIxSiII: 2
+  sig_SiIIxSiII_ztype: interp_lin
+  sig_SiIIxSiII_otype: exp
+  sig_SiIIxSiII_fixed: false

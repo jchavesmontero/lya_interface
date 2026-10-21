@@ -1,6 +1,7 @@
 """Explicit public/backend ownership. Statistical priors belong to Cobaya."""
 from dataclasses import dataclass
 import numpy as np
+from lya_interface.names import CUP1D_PREFIXES, IGM_PREFIX, nuisance_public_name
 
 COSMOLOGY = {"As", "ns", "nrun", "H0", "ombh2", "omch2", "mnu", "tau", "nnu", "omk"}
 
@@ -71,8 +72,9 @@ class ParameterRegistry:
         self.entries = {}
         if len(set(igm_names + nuisance_names)) != len(igm_names + nuisance_names):
             raise ValueError("duplicate or conflicting backend coefficient names")
-        aliases = {"igm_" + n: (n, "IGM", "ForestFlowTheory") for n in igm_names}
-        aliases.update({"p1d_" + n: (n, "nuisance", "Cup1DLikelihood") for n in nuisance_names})
+        aliases = {IGM_PREFIX + n: (n, "IGM", "ForestFlowTheory") for n in igm_names}
+        # Shared Kaiser silicon coefficients are metal_<native>, other nuisances p1d_<native>.
+        aliases.update({nuisance_public_name(n): (n, "nuisance", "Cup1DLikelihood") for n in nuisance_names})
         aliases.update({n: (n, "cosmology", "CAMB") for n in COSMOLOGY})
         aliases.update({n: (n, "derived", "LyaCosmology") for n in ("Delta2star", "nstar", "alphastar")})
         aliases["logA"] = ("As", "cosmology", "CAMB")
@@ -94,7 +96,7 @@ class ParameterRegistry:
                 "As = 1e-10 * exp(logA)" if name == "logA" else metadata.get("transformation", "identity"),
                 status, definition, consumer, settings.get("prior"), settings.get("ref"), settings.get("proposal"))
         for name in aliases:
-            if name.startswith(("igm_", "p1d_")) and name not in self.entries:
+            if name.startswith(CUP1D_PREFIXES) and name not in self.entries:
                 raise ValueError(f"missing explicit parameter definition {name}")
         if "logA" in definitions:
             d = definitions.get("As")

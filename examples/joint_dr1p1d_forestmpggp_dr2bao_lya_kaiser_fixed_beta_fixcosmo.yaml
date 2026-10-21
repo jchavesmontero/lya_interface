@@ -1,0 +1,29 @@
+# joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta.yaml
+# at fixed cosmology: LaCE/cup1d Planck18_noBAO, the cosmology of the Vega DR2
+# template, so the BAO dilations are ap = at = 1. Also fixed: the filtering-scale
+# history at the mpg_central fiducial (igm_kF_kms_* = 1, the multiplicative factor
+# on it) and the P1D resolution corrections p1d_R_coeff_* at the best fit (not
+# converged, 300 evaluations) of
+# notebooks/minimizer_results_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta_rmin10.npy.
+interface_base: joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta.yaml
+
+fixed_parameters:
+  As: 2.0989031673191437e-09  # exp(3.044) 1e-10
+  ns: 0.9649
+  ap: 1.0
+  at: 1.0
+  igm_kF_kms_0: 1.0
+  igm_kF_kms_1: 1.0
+  igm_kF_kms_2: 1.0
+  igm_kF_kms_3: 1.0
+  p1d_R_coeff_0: 0.007021494917640481
+  p1d_R_coeff_1: 0.016387746713435097
+  p1d_R_coeff_2: 0.009342865338412443
+  p1d_R_coeff_3: 0.0037158783891730607
+  p1d_R_coeff_4: 0.0206107444982411
+  p1d_R_coeff_5: 0.03036329993111056
+  p1d_R_coeff_6: 0.05253409780462662
+  p1d_R_coeff_7: 0.05190532116321875
+  p1d_R_coeff_8: 0.01553777108386642
+  p1d_R_coeff_9: 0.007531954324087778
+  p1d_R_coeff_10: 0.019945048395156123

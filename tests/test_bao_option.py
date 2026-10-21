@@ -50,6 +50,25 @@ class VegaOnlyFixture(Likelihood):
         return -3.5
 
 
+def test_fixed_parameters_fix_every_registry_copy(tmp_path):
+    name = "joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta_rmin10"
+    fixed = load_configuration(ROOT / f"examples/{name}_fixcosmo.yaml")
+    free = load_configuration(ROOT / f"examples/{name}.yaml")
+    for public, value in (("As", 2.0989031673191437e-09), ("ns", 0.9649), ("ap", 1.0), ("igm_kF_kms_2", 1.0)):
+        assert "prior" in free["params"][public]
+        assert fixed["params"][public] == value
+        for section in ("theory", "likelihood"):
+            for options in fixed[section].values():
+                definitions = (options or {}).get("parameter_definitions", {})
+                if public in definitions:
+                    assert definitions[public] == value
+    assert set(fixed["params"]) == set(free["params"])
+    path = tmp_path / "bad.yaml"
+    path.write_text(f"interface_base: {ROOT / 'examples' / name}.yaml\nfixed_parameters:\n  H0: 70.0\n")
+    with pytest.raises(ValueError, match="sampled parameters"):
+        load_configuration(path)
+
+
 def test_component_diagnostics_support_vega_only_graphs():
     config = {"params": {"ap": {"prior": {"min": .8, "max": 1.2}, "ref": 1.}},
               "likelihood": {"vega": {"external": VegaOnlyFixture}}}

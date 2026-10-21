@@ -30,8 +30,8 @@ class VegaLikelihood(Likelihood):
         """Load static Vega data, template and configuration once.
 
         With ``metal_model`` and ``metal_alpha_reference`` (a P1D fit saved by
-        :meth:`lya_interface.fit.Fit.save`, or a mapping of public ``p1d_``
-        values), the amplitude exponent ``alpha_<line>`` of each silicon line is
+        :meth:`lya_interface.fit.Fit.save`, a mapping of public ``metal_``
+        values, or a cup1d global IC file), the amplitude exponent ``alpha_<line>`` of each silicon line is
         set once, before Vega builds its metal matrices, to the logarithmic
         slope ``d ln|b| / d ln(1 + z)`` of the cup1d bias history at that
         reference point and Vega's ``z_eff`` (see
@@ -62,7 +62,7 @@ class VegaLikelihood(Likelihood):
                 raise ValueError("alpha_<silicon line> set both by metal_alpha_reference and by "
                                  f"parameter_mapping/fixed_native_parameters: {sorted(alphas & configured)}")
             zeff = main_config_zeff(self.native_config)
-            native = self._native_metal_point(reference_point(self.metal_alpha_reference))
+            native = self._native_metal_reference(self.metal_alpha_reference)
             exponents = metal_amplitude_exponents(self._kaiser, native, zeff)
             self.metal_alpha = {self._SILICON[line]: alpha for line, alpha in exponents.items()}
             overrides = {f"alpha_{name}": alpha for name, alpha in self.metal_alpha.items()}
@@ -165,14 +165,16 @@ class VegaLikelihood(Likelihood):
         from cup1d.models.contaminants.metals.si_kaiser import FAMILIES
         from cup1d.models.contaminants.model_contaminants import Contaminants
         from lya_interface.adapters.cup1d_backend import native_configuration
+        from lya_interface.names import nuisance_public_name
 
         args, _, nuisance = native_configuration(self.metal_model)
         if args.fid_cont.get("metal_model_type") != "Kaiser":
             raise ValueError("metal_model must be a cup1d configuration with metal_model_type: Kaiser")
+        self._metal_args = args
         self._kaiser = Contaminants(free_param_names=nuisance,
                                     pars_cont=args.fid_cont).metal_models["Si_kaiser"]
-        # Same public names as the P1D likelihood (``p1d_<native>``).
-        self.metal_parameters = {"p1d_" + name: name for name in nuisance
+        # Same public parameters as the P1D likelihood (``metal_<native>``).
+        self.metal_parameters = {nuisance_public_name(name): name for name in nuisance
                                  if name.rsplit("_", 1)[0] in FAMILIES}
         # The SiII x SiII factor and decorrelation are passed to Vega only when free in P1D
         self._sii_x_sii_free = any(name.rsplit("_", 1)[0] in ("f_SiIIxSiII", "sig_SiIIxSiII")
@@ -184,7 +186,11 @@ class VegaLikelihood(Likelihood):
         Parameters
         ----------
         point : mapping
-            Public parameter values; it must hold every shared ``p1d_`` metal parameter.
+            Public parameter values; it must hold every shared silicon bias
+            (``metal_b_<line>_<i>``), the only histories the exponents depend
+            on. Other shared metal parameters it lacks (e.g. the SiII x SiII
+            factor and decorrelation of a fit saved before they were free) are
+            left out, so they keep their fiducial values.
 
         Returns
         -------
@@ -194,12 +200,68 @@ class VegaLikelihood(Likelihood):
         Raises
         ------
         ValueError
-            If a shared metal parameter is missing.
+            If a shared silicon bias is missing.
         """
         missing = sorted(set(self.metal_parameters) - set(point))
+        biases = [name for name in missing if self.metal_parameters[name].startswith("b_")]
+        if biases:
+            raise ValueError(f"metal_alpha_reference lacks the shared silicon biases {biases}")
         if missing:
-            raise ValueError(f"metal_alpha_reference lacks the shared metal parameters {missing}")
-        return {native: float(point[public]) for public, native in self.metal_parameters.items()}
+            self.log.info("metal_alpha_reference: %s not in the reference point; fiducial values",
+                          missing)
+        return {native: float(point[public]) for public, native in self.metal_parameters.items()
+                if public in point}
+
+    def metal_alpha_at(self, point):
+        """Return the silicon exponents ``alpha_<line>`` implied by a public point.
+
+        Compare them with :attr:`metal_alpha`, the exponents frozen in Vega's
+        metal matrices, to check that a best fit is consistent with them.
+
+        Parameters
+        ----------
+        point : mapping
+            Public parameter values with every shared silicon bias.
+
+        Returns
+        -------
+        dict
+            Vega line name (``SiIII(1207)``, ...) to exponent at Vega's ``z_eff``.
+        """
+        exponents = metal_amplitude_exponents(self._kaiser, self._native_metal_point(point), self.zeff)
+        return {self._SILICON[line]: alpha for line, alpha in exponents.items()}
+
+    def _native_metal_reference(self, reference):
+        """Return the native cup1d metal values of ``metal_alpha_reference``.
+
+        Parameters
+        ----------
+        reference : str, pathlib.Path or mapping
+            A :meth:`lya_interface.fit.Fit.save` result or a mapping of public
+            values (see :func:`reference_point`), or a cup1d global IC file
+            (:func:`lya_interface.initial_conditions.save_global_ic`), which is
+            interpolated at the redshift nodes of the metal model. Shared metal
+            families absent from the IC file (e.g. silicon betas fixed when it
+            was written) keep their fiducial values.
+
+        Returns
+        -------
+        dict
+            Native cup1d name to value.
+        """
+        if not isinstance(reference, dict):
+            from pathlib import Path
+            from lya_interface.initial_conditions import ic_native_values, is_global_ic
+
+            content = np.load(Path(reference).expanduser(), allow_pickle=True).item()
+            if is_global_ic(content):
+                native, missing = ic_native_values(self._metal_args, self.metal_parameters.values(),
+                                                   content)
+                if missing:
+                    self.log.info("metal_alpha_reference: %s not in the IC file; fiducial values",
+                                  missing)
+                return native
+        return self._native_metal_point(reference_point(reference))
 
     def _setup_metal_model(self, natives):
         """Check the silicon routing to Vega and set the velocity conversion.
@@ -233,7 +295,7 @@ class VegaLikelihood(Likelihood):
         Parameters
         ----------
         params_values : mapping
-            Public values; the shared ``p1d_`` metal parameters are used.
+            Public values; the shared ``metal_`` parameters are used.
 
         Returns
         -------
@@ -405,7 +467,9 @@ def reference_point(reference):
     ----------
     reference : str, pathlib.Path or mapping
         A result file written by :meth:`lya_interface.fit.Fit.save` (its best-fit
-        point is used), or a mapping of public parameter values.
+        point is used), or a mapping of public parameter values. Names from
+        before the ``metal_``/``xi3d_`` prefixes are translated
+        (:func:`lya_interface.names.translate_legacy`).
 
     Returns
     -------
@@ -417,13 +481,15 @@ def reference_point(reference):
     ValueError
         If the file holds no best-fit point.
     """
+    from lya_interface.names import translate_legacy
+
     if isinstance(reference, dict):
-        return dict(reference)
+        return translate_legacy(reference)
     from pathlib import Path
 
     content = np.load(Path(reference).expanduser(), allow_pickle=True).item()
     if "best_fit" in content:
-        return dict(content["best_fit"]["point"])
+        return translate_legacy(content["best_fit"]["point"])
     raise ValueError(f"{reference} is not a Fit result file (no best_fit point)")
 
 

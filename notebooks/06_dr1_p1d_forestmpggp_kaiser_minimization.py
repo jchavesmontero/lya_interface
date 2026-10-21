@@ -31,10 +31,12 @@
 # **Metals**: the CM2026 silicon templates are replaced by the line-of-sight
 # Kaiser silicon model shared with Vega (`metal_model_type: Kaiser`; see
 # `notebooks/metals` for the model, its validation and the parameter impact).
-# Free: the four silicon biases at z=2.33 and the SiIII and SiII line-of-sight
-# decorrelations (km/s); the silicon betas are fixed at 0.5
-# (`examples/native_cm2026_forestmpggp_kaiser.yaml`). The forest_mpg_gp initial
-# conditions do not contain these parameters, so they start at their references.
+# Free (`metal_*`, two z nodes each): the four silicon biases, the SiIII and SiII
+# line-of-sight decorrelations (km/s), and the SiII×SiII amplitude factor and
+# decorrelation; the silicon betas are fixed at 0.5
+# (`examples/native_cm2026_forestmpggp_kaiser.yaml`). Parameters missing from the
+# initial conditions (e.g. SiII×SiII) start at their references. After the fit,
+# the parameters close to a prior bound are listed.
 #
 # This notebook is the P1D-only starting point for the later DR1 P1D + DR2 BAO
 # combination: that notebook swaps the YAML for `examples/joint_desi_dr1_dr2_bao.yaml`
@@ -142,7 +144,7 @@ print(f"1 evaluation: {(perf_counter() - t0)/nn:.2f} s")
 
 # %%
 RUN_MINIMIZATION = True
-MAX_EVALS = 200
+MAX_EVALS = 3000
 best_fit = fit.best_fit
 if RUN_MINIMIZATION:
     best_fit = fit.minimize(
@@ -158,6 +160,7 @@ if RUN_MINIMIZATION:
     if not best_fit.success:
         print("WARNING: minimization did not converge; do not call this a best fit. "
               "Rerun with initial_point = dict(best_fit.point) to continue.")
+    fit.near_bounds()
 
 # %%
 initial_point = best_fit.point
@@ -240,7 +243,7 @@ if best_fit is not None and RUN_MINIMIZATION:
 
 # %%
 SAVE_IC = True
-OVERWRITE_IC = False
+OVERWRITE_IC = True
 if SAVE_IC and best_fit is not None:
     if not best_fit.success:
         print("WARNING: saving initial conditions from a non-converged fit.")
@@ -273,6 +276,7 @@ if RESTORE and Path(RESULTS_FILE).is_file():
     print(format_goodness_of_fit(best_fit.statistics, multiline=True))
     display({"success": best_fit.success, "message": best_fit.message,
              "local_errors": None if local_errors is None else local_errors.errors})
+    fit.near_bounds()
     fig, ax, star_summary = fit.plot_star_ellipse(unblind=UNBLIND)
     plt.show()
 elif RESTORE:

@@ -96,13 +96,13 @@ FREE_PARAMETERS = {
     # Vega-only dilation/HCD parameters. Ly-alpha bias parameters are derived
     # from ForestFlow and must never appear here as independently varied terms.
     "BAO": (
-        "ap", "at", "beta_hcd", "L0_hcd",
+        "ap", "at", "xi3d_beta_hcd", "xi3d_L0_hcd",
     ),
 }
 SAMPLED_PARAMETERS = frozenset().union(*FREE_PARAMETERS.values())
 # This is the complete Vega-facing namespace, not merely the entries that
 # happen to be varied in a particular notebook run.
-VEGA_PARAMETERS = frozenset(("ap", "at", "beta_hcd", "L0_hcd"))
+VEGA_PARAMETERS = frozenset(("ap", "at", "xi3d_beta_hcd", "xi3d_L0_hcd"))
 
 def reference_value(definition):
     """Return an explicit native reference without inventing a prior centre."""
@@ -337,8 +337,8 @@ MAX_EVALS = 50
 # finite simplex search boxes (five standard deviations); they do not change
 # the posterior or truncate either prior.
 OPTIMIZATION_BOUNDS = {
-    "beta_hcd": (0.05, 0.95),
-    "L0_hcd": (-5.0, 15.0),
+    "xi3d_beta_hcd": (0.05, 0.95),
+    "xi3d_L0_hcd": (-5.0, 15.0),
 }
 best_fit = None
 local_errors = None
