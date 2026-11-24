@@ -62,6 +62,11 @@ export OPENBLAS_NUM_THREADS=$THREADS
 export MKL_NUM_THREADS=$THREADS
 export NUMEXPR_NUM_THREADS=$THREADS
 export OMP_PLACES=threads
+# Cobaya locks <output>.input.yaml.locked against two runs writing the same
+# output. File locks are unreliable on CFS (DVS mounts): they fail spuriously
+# or survive the process. Jobs here never overlap (the successor starts after
+# this one ends; the test overwrites its own folder), so locking is not needed.
+export COBAYA_USE_FILE_LOCKING=False
 export OMP_PROC_BIND=spread
 PYTHON=$CONDA_PREFIX/bin/python    # the environment's interpreter, by full path
 RUN="$PYTHON $LYA_INTERFACE/scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml"

@@ -238,6 +238,12 @@ blinded. The comparison with the native emcee chains is still to do.
 
 ## Troubleshooting
 
+* **`File test/mcmc.input.yaml.locked is locked`**: another process has the
+  same output open (on the laptop: a notebook kernel that ran a test), or, on
+  NERSC CFS, an unreliable file lock. The job script sets
+  `COBAYA_USE_FILE_LOCKING=False`; by hand, check that nothing else is running
+  (`ps -u $USER | grep run_mcmc`) and prefix the command with
+  `COBAYA_USE_FILE_LOCKING=False`.
 * **`The given covmat is not a positive-definite ...`**: the production YAML
   lacks `sample_in_unit_cube: true`, or `proposal_covmat.txt` is in physical
   units. Rerun sections 1-2 of the notebook.
