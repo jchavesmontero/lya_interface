@@ -1,7 +1,8 @@
 """Route scalar Cobaya points through cup1d's columnar observation kernels."""
 import numpy as np
 
-from cup1d.likelihood.external import ExternalP1DLikelihood, apply_observation_model
+from cup1d.likelihood.external import (ExternalP1DLikelihood, apply_observation_model, apply_resolution,
+                                      dataset_nuisance, without_resolution)
 
 
 class VectorizedP1DLikelihood(ExternalP1DLikelihood):
@@ -30,22 +31,32 @@ class VectorizedP1DLikelihood(ExternalP1DLikelihood):
         columns = {name: np.array([value], dtype=float)
                    for name, value in nuisance_parameters.items()}
         index = {z: i for i, z in enumerate(context.redshifts)}
+        groups = {group.identifier: group for group in self.request.groups}
         result = {}
-        for group in self.request.groups:
+        for keys in self.Rebin_data.groups:
+            group = groups[keys[0]]  # data sets of a group share redshifts and fine grids
+            for key in keys:
+                if len(p1d_lya_kms[key]) != len(groups[key].redshifts):
+                    raise ValueError("redshift prediction count mismatch")
             rows = p1d_lya_kms[group.identifier]
-            if len(rows) != len(group.redshifts):
-                raise ValueError("redshift prediction count mismatch")
             for k, p in zip(group.k_ikms, rows):
                 if np.shape(p) != (len(k),) or not np.all(np.isfinite(p)):
                     raise ValueError("malformed or non-finite external prediction")
+            zs = np.asarray(group.redshifts)
+            k_rows = [np.asarray(k) for k in group.k_ikms]
             inds = [index[z] for z in group.redshifts]
+            # contaminants once per group; each data set adds its resolution correction
+            base = columns if len(keys) == 1 else without_resolution(columns)
             observed, _ = apply_observation_model(
-                self.model_cont, self.model_syst, np.asarray(group.redshifts),
-                [np.asarray(k) for k in group.k_ikms],
+                self.model_cont, self.model_syst, zs, k_rows,
                 [np.asarray(p)[None, :] for p in rows],
                 np.asarray(context.mean_flux)[None, inds],
-                np.asarray(context.dkms_diMpc)[None, inds], columns,
+                np.asarray(context.dkms_diMpc)[None, inds],
+                dataset_nuisance(keys[0], base, self.syst_data_labels),
             )
-            result[group.identifier] = [row[0] for row in
-                self.Rebin_data.rebinning_batch(group.identifier, observed)]
+            for key in keys:
+                own = observed if len(keys) == 1 else apply_resolution(
+                    self.model_syst, zs, k_rows, observed,
+                    dataset_nuisance(key, columns, self.syst_data_labels))
+                result[key] = [row[0] for row in self.Rebin_data.rebinning_batch(key, own)]
         return result

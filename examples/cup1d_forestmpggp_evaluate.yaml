@@ -14,11 +14,11 @@ params: &definitions
   tau: 0.0  # Native LaCE Planck18 reionization setting.
   nrun: 0.0
   As:
-    prior: {min: 1.285951426688915e-9, max: 2.821676315539169e-9}
+    prior: {min: 1.2859514266888883e-09, max: 2.8216763155391104e-09}
     ref: 2.0989031673191437e-9  # exp(3.044) 1e-10
     proposal: 2e-11
   ns:
-    prior: {min: 0.9111361369993592, max: 1.0265420743317653}
+    prior: {min: 0.9111361369993737, max: 1.02654207433178}
     ref: 0.9649
     proposal: 0.001
   igm_tau_eff_0:
@@ -261,18 +261,9 @@ theory:
       nnu: [3.044, 3.044]
       omk: [0.0, 0.0]
       nrun: [0.0, 0.0]
-    # Split Gauss-Legendre in ln k at fixed k_par (cup1d's native rule), split at
-    # k = 0.4/Mpc. On DESI DR1 (forest_mpg_gp, P1D and Kaiser-metal moments, 4
-    # points) |delta chi2| <= 0.025 against a converged reference. The high-k
-    # segment needs 32 nodes, and k_perp_min = 1e-3 /Mpc biases chi2 by ~0.25
-    # (the strip down to 1e-4 is ~1e-4 of P1D at the lowest k).
-    projection:
-      rule: k_mu
-      k_perp_min_iMpc: 0.0001
-      k_perp_max_iMpc: 100.0
-      k_split_iMpc: 0.4
-      n_low: 32
-      n_high: 32
+    # P3D-to-P1D quadrature: no `projection` block, so ForestFlow's default
+    # P1DIntegratorKMu is used, the same object as native cup1d (see
+    # cup1d/notebooks/validation/convergence_rebin_quadrature).
 likelihood:
   lya_interface.likelihoods.cup1d.Cup1DLikelihood:
     stop_at_error: true

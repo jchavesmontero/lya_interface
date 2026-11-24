@@ -63,7 +63,8 @@ theory:
       nnu: [3.046, 3.046]
       omk: [0.0, 0.0]
       nrun: [0.0, 0.0]
-    projection:
+    projection:  # frozen regression fixture: keep the Simpson k_perp rule
+      rule: k_perp
       k_perp_min_iMpc: 0.001
       k_perp_max_iMpc: 100.0
       n_k_perp: 96

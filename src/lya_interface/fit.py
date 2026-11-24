@@ -129,8 +129,10 @@ class Fit:
             asset = options.get("covariance_asset") if isinstance(options, dict) else None
             if asset and not Path(asset).is_file():
                 raise FileNotFoundError(f"Calibrated covariance required: {asset}")
+        # a distribution ``ref`` (e.g. a chain starting ball) contributes its centre
         self.reference = {
-            name: definition["ref"]
+            name: (definition["ref"]["loc"] if isinstance(definition["ref"], dict)
+                   else definition["ref"])
             for name, definition in self.info["params"].items()
             if isinstance(definition, dict) and "prior" in definition
         }

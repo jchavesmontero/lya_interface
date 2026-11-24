@@ -57,9 +57,14 @@ small P1D validation fixture; it is a smoke-test example, not a calibrated
 CM2026 production fit.
 
 The examples inherit cup1d's **CM2026 baseline**, changing the emulator alias
-from `lace_mpg` to `forest_mpg_cinn`. They use DESIY1_QMLE3, rebinning factor 8,
-four-node MPG-central IGM histories, the full native contaminant/resolution
-configuration, statistical covariance factor 1.05 and full emulator covariance.
+from `lace_mpg` to `forest_mpg_cinn`. They use DESIY1_QMLE3, cup1d's converged
+numerical defaults (`k_rebin_factor: 32`, `n_k_emu: 64`, flat `As`/`ns` priors over
+the training mean +- 2 sigma, ForestFlow's default `k_mu` projection, so no
+`projection` block), four-node MPG-central IGM histories, the full native
+contaminant/resolution configuration, statistical covariance factor 1.05 and full
+emulator covariance. `scripts/config_from_cup1d.py` generates an equivalent
+configuration from any cup1d YAML (e.g. `examples/hires_forestflow_evaluate.yaml`)
+and re-syncs the `As`/`ns` bounds of hand-written examples.
 All 53 baseline parameters are sampled using exported native fiducial values
 and bounds. The native YAML is a sparse override of maintained cup1d defaults;
 the Cobaya parameter export was checked against native parameter definitions.

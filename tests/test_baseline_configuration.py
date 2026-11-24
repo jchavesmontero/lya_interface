@@ -19,10 +19,12 @@ def test_cm2026_settings_and_full_parameter_registry():
                  "fid_igm", "fid_cont", "fid_syst",
                  "ic_correction", "cov_syst_type", "emu_cov_type"):
         assert _serializable(getattr(actual, name)) == _serializable(getattr(baseline, name))
-    # Intentional differences: the fiducial cosmology of the Vega DR2 template,
-    # and a converged rebinning factor (CM2026's 8 is off by up to 1.5 in chi2).
+    # Intentional difference: the fiducial cosmology of the Vega DR2 template.
+    # The converged numerical settings are cup1d's defaults, inherited as is.
     assert actual.fid_cosmo_label == "Planck18_noBAO"
-    assert actual.k_rebin_factor == 32
+    for name in ("k_rebin_factor", "n_k_emu", "cosmo_prior_nsigma"):
+        assert getattr(actual, name) == getattr(baseline, name)
+    assert (actual.k_rebin_factor, actual.n_k_emu, actual.cosmo_prior_nsigma) == (32, 64, 2.0)
     for name in actual.cov_factor:
         np.testing.assert_array_equal(actual.cov_factor[name], baseline.cov_factor[name])
     assert actual.emulator_label == forest["emulator_label"] == "forest_mpg_cinn"

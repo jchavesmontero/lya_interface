@@ -259,7 +259,9 @@ def test_realization_count_sensitivity_is_not_error_covariance(model):
         values.append(like.backend.evaluate_from_p1d(powers,pred["context"],nuisance).chi2_data)
     print("realization-count chi2 1000/2000/4000/8000:",values)
     assert np.all(np.isfinite(values))
-    assert values[0]==pytest.approx(like.backend.evaluate_from_p1d(pred["powers"],pred["context"],nuisance).chi2_data,rel=1e-12)
+    # the provider projects on n_k_emu log-spaced k and interpolates (|dchi2| <= 0.0033
+    # in the convergence study); here every k is projected directly
+    assert values[0]==pytest.approx(like.backend.evaluate_from_p1d(pred["powers"],pred["context"],nuisance).chi2_data,abs=0.01)
 
 
 @pytest.mark.scientific

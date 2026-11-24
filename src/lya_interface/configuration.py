@@ -69,6 +69,60 @@ def _fix_parameters(info, fixed):
                 registry[name] = float(value)
 
 
+def _sample_in_unit_cube(info):
+    """Sample every flat-prior parameter in [0, 1] (:mod:`lya_interface.unit_cube`).
+
+    Only Cobaya's ``params`` change; component ``parameter_definitions`` keep
+    the physical definitions, which they use for routing.
+
+    Parameters
+    ----------
+    info : dict
+        Configuration with flat ``params``; modified in place.
+    """
+    from lya_interface.unit_cube import unit_cube_params
+
+    if not isinstance(info.get("params"), dict):
+        raise ValueError("sample_in_unit_cube requires flat params")
+    for section in ("theory", "likelihood"):
+        for options in info.get(section, {}).values():
+            if isinstance(options, dict) and isinstance(options.get("parameter_definitions"), dict):
+                options["parameter_definitions"] = deepcopy(options["parameter_definitions"])
+    info["params"] = unit_cube_params(info["params"])
+
+
+def _set_references(info, references):
+    """Replace the ``ref`` of sampled parameters, in ``params`` and every component registry.
+
+    Parameters
+    ----------
+    info : dict
+        Configuration with inherited flat ``params``; modified in place.
+    references : mapping
+        Public parameter name to its new Cobaya ``ref``: a number, or a
+        mapping such as ``{"dist": "norm", "loc": value, "scale": width}``.
+
+    Raises
+    ------
+    ValueError
+        If ``params`` is not flat or a name is not a sampled parameter.
+    """
+    if not isinstance(references, dict) or not isinstance(info.get("params"), dict):
+        raise ValueError("reference_point requires inherited flat params")
+    not_sampled = sorted(name for name in references if not (
+        isinstance(info["params"].get(name), dict) and "prior" in info["params"][name]))
+    if not_sampled:
+        raise ValueError(f"reference_point must name sampled parameters: {not_sampled}")
+    registries = [info["params"]] + [
+        options["parameter_definitions"]
+        for section in ("theory", "likelihood") for options in info.get(section, {}).values()
+        if isinstance(options, dict) and isinstance(options.get("parameter_definitions"), dict)]
+    for registry in {id(r): r for r in registries}.values():
+        for name, ref in references.items():
+            if isinstance(registry.get(name), dict):
+                registry[name] = {**registry[name], "ref": deepcopy(ref)}
+
+
 def load_configuration(path):
     """Load an interface YAML file and resolve inherited configuration.
 
@@ -94,7 +148,11 @@ def load_configuration(path):
     -----
     ``fixed_parameters`` (public name to value) turns sampled parameters of the
     inherited configuration into fixed ones, in ``params`` and in every
-    component's ``parameter_definitions``.
+    component's ``parameter_definitions``. ``reference_point`` (public name to
+    a Cobaya ``ref``) replaces starting references the same way, e.g. to start
+    a chain from a best fit. ``sample_in_unit_cube: true`` makes Cobaya sample
+    every flat-prior parameter in [0, 1] (``<name>_cube``) and compute the
+    physical one from it, as native cup1d; given references stay physical.
     """
     path = Path(path).resolve()
     info = yaml_load_file(str(path))
@@ -120,6 +178,10 @@ def load_configuration(path):
     fixed = info.pop("fixed_parameters", {})
     if fixed:
         _fix_parameters(info, fixed)
+    references = info.pop("reference_point", {})
+    if references:
+        _set_references(info, references)
+    unit_cube = info.pop("sample_in_unit_cube", False)
     structured = info.pop("parameters", None)
     interface_mapping = None
     p1d_definitions = None
@@ -165,4 +227,6 @@ def load_configuration(path):
                             (i for i, parent in enumerate(p.parents) if parent.is_dir()), len(p.parents)))
                         selected = next((p for p in candidates if Path(str(p)+suffix).exists()), fallback)
                         options[key] = str(selected.resolve())
+    if unit_cube:
+        _sample_in_unit_cube(info)
     return deepcopy(info)

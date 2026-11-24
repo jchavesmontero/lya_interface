@@ -164,10 +164,16 @@ def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
         error = dict(zz_zk=np.array(zs), k_Mpc_zk=np.ones(len(zs)), cov_zk=np.zeros((len(zs), len(zs))))
     else:
         error = np.load(Path(covariance_asset).resolve(), allow_pickle=True).item()
+    # resolution correction only for these data sets, as native cup1d
+    syst_data_labels = getattr(args, "syst_data_labels", None)
+    # one fine grid per redshift for data sets with the same redshifts, as native cup1d
+    shared_k_grid = bool(getattr(args, "shared_k_grid", True))
     identity = fingerprint(_serializable(dict(native=file_identity(path),
         fiducial_M=conversions, covariance_asset=file_identity(covariance_asset) if covariance_asset else None,
         cov_factor=args.cov_factor, emu_cov_type=args.emu_cov_type, rebin=args.k_rebin_factor,
         fid_cont=args.fid_cont, fid_syst=args.fid_syst, ic_correction=args.ic_correction,
+        syst_data_labels=syst_data_labels,
+        shared_k_grid=shared_k_grid,
         data={key: dict(z=d.z, k=[k.tolist() for k in d.k_kms], power=[p.tolist() for p in d.Pk_kms],
                        covariance=[c.tolist() for c in d.cov_Pk_kms],
                        full_covariance=None if d.full_cov_Pk_kms is None else d.full_cov_Pk_kms.tolist()) for key,d in data.items()})))
@@ -177,5 +183,6 @@ def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
         cov_factor=args.cov_factor, emulator_covariance=error,
         fiducial_conversion=lambda z: conversions[float(z)], emu_cov_type=args.emu_cov_type,
         k_rebin_factor=args.k_rebin_factor, configuration_id=identity,
-        include_logdet=include_logdet)
+        include_logdet=include_logdet, syst_data_labels=syst_data_labels,
+        shared_k_grid=shared_k_grid)
     return backend, registry
