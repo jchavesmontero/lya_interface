@@ -93,8 +93,7 @@ covariance.
 2. Environment with the four packages installed editable, plus Cobaya, and
    mpi4py built against Cray MPICH:
    ```bash
-   module load python
-   conda activate lace
+   source /global/homes/j/jjchaves/miniconda3/bin/activate lace   # no module load python
    MPICC="cc -shared" pip install --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
    ```
 3. Check out the analysis branches: cup1d `high_res`, lya_interface `hires`,
@@ -139,7 +138,7 @@ Keep it short: login nodes are shared.
 
 ```bash
 salloc -A desi -C cpu -q interactive -N 1 -t 00:30:00
-conda activate lace
+source /global/homes/j/jjchaves/miniconda3/bin/activate lace
 python scripts/thread_scaling.py examples/hires_forestflow_evaluate.yaml \
     --threads 1 2 4 8 16 32 --cores-per-node 128 --node-memory-gb 512
 ```
@@ -180,7 +179,9 @@ chains (more threads) burn in sooner.
 `scripts/nersc/mcmc_job.sh` is set up for account `desi`, 64 chains x 1
 thread per node (`--ntasks-per-node=64`, `--cpus-per-task=4`: two cores per
 chain; threads do not help, 0.134 s per call for 1-32 threads), and the NERSC
-`LYA_INTERFACE`. Check `activate_environment` and `MAX_JOBS` at its top.
+`LYA_INTERFACE`. It activates `lace` with `/global/homes/j/jjchaves/miniconda3/bin/activate` (no
+`module load python`) and runs the environment's Python by full path. Check
+`MAX_JOBS` at its top.
 
 **Test job** (debug queue, the whole path with 64 chains): 1000 accepted points
 per chain (`TEST_SAMPLES`) in `RUN_DIR/test/` (overwritten), with convergence

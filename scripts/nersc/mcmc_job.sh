@@ -44,9 +44,14 @@ LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
 RUN_DIR=$LYA_INTERFACE/output/hires_forestflow/cobaya_mcmc   # holds cobaya_mcmc.yaml
 MAX_JOBS=10
 TEST_SAMPLES=1000                  # accepted points per chain in MODE=test (~10 min)
+CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin
+CONDA_ENV=lace                     # environment with the IGMHub packages
 activate_environment() {
-    module load python
-    conda activate lace            # environment with the IGMHub packages
+    # activate script of the installation itself: no conda init or module needed;
+    # conda's activation scripts may use unset variables, so relax set -u for it
+    set +u
+    source "$CONDA_BIN/activate" "$CONDA_ENV"
+    set -u
 }
 # ---------------------------------------------------------------------------
 
@@ -58,8 +63,9 @@ export MKL_NUM_THREADS=$THREADS
 export NUMEXPR_NUM_THREADS=$THREADS
 export OMP_PLACES=threads
 export OMP_PROC_BIND=spread
-RUN="python $LYA_INTERFACE/scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml"
-echo "mode $MODE, $SLURM_NTASKS chains x $THREADS threads, run folder $RUN_DIR"
+PYTHON=$CONDA_PREFIX/bin/python    # the environment's interpreter, by full path
+RUN="$PYTHON $LYA_INTERFACE/scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml"
+echo "mode $MODE, $SLURM_NTASKS chains x $THREADS threads, run folder $RUN_DIR, python $PYTHON"
 
 if [ "$MODE" = "test" ]; then
     srun --cpu-bind=cores $RUN --test --test-samples "$TEST_SAMPLES" --learn-every 5d
