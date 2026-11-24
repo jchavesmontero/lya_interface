@@ -8,8 +8,11 @@ script runs from there.
 
 Usage
 -----
-Test (laptop, NERSC login node): a short single chain written to ``test/``,
-overwriting the previous test, with the time per step and a forecast::
+Test: a short run written to ``test/``, overwriting the previous test, with
+the time per step and a forecast. One chain on a laptop or NERSC login node;
+under ``srun`` one chain per rank, with frequent convergence checks
+(``--learn-every``) so that the checkpoint and the learned covariance are
+written too (``MODE=test`` in ``scripts/nersc/mcmc_job.sh``)::
 
     python scripts/run_mcmc.py <run_dir>/cobaya_mcmc.yaml --test
 
@@ -18,7 +21,8 @@ Production (one chain per MPI rank; resumes from the checkpoint)::
     srun -n 8 python scripts/run_mcmc.py <run_dir>/cobaya_mcmc.yaml
 
 Convergence of the production run (exit code 0 if converged, 1 if not, 2 if
-it has not started), used by the Slurm job to resubmit itself::
+it has not started), used by the Slurm job to resubmit itself; it also reloads
+the chains to check them. With ``--test``, of the test run::
 
     python scripts/run_mcmc.py <run_dir>/cobaya_mcmc.yaml --status
 """
@@ -54,7 +58,7 @@ def count_samples(prefix):
 
 
 def status(prefix):
-    """Print the convergence status of a run; return the exit code."""
+    """Print the convergence status of a run and reload it; return the exit code."""
     checkpoint = read_checkpoint(prefix)
     if checkpoint is None:
         print(f"{prefix}: no checkpoint (not started)")
@@ -63,6 +67,16 @@ def status(prefix):
           f"R-1 (last) = {checkpoint.get('Rminus1_last')}, chains = {checkpoint.get('mpi_size')}")
     for name, n in count_samples(prefix).items():
         print(f"  {name}: {n} accepted points")
+    for suffix in ("covmat", "progress", "updated.yaml"):
+        path = Path(f"{prefix}.{suffix}")
+        print(f"  {path.name}: {'written' if path.is_file() else 'MISSING'}")
+    try:  # the chains must load as the analysis will load them
+        from cobaya import load_samples
+        samples = load_samples(str(prefix), skip=0, combined=True)
+        physical = [name for name in ("As", "ns", "Delta2star") if name in samples.data.columns]
+        print(f"  reloaded: {len(samples)} points; physical columns present: {physical}")
+    except Exception as error:  # report, do not fail the status check
+        print(f"  reloading failed: {error!r}")
     return 0 if checkpoint.get("converged") else 1
 
 
@@ -74,6 +88,9 @@ def main():
     parser.add_argument("--test-samples", type=int, default=200, help="accepted points of the test chain")
     parser.add_argument("--target-steps", type=float, default=50_000,
                         help="steps per chain assumed by the test forecast")
+    parser.add_argument("--learn-every", default="5d",
+                        help="test: accepted points per chain between convergence checks "
+                             "(Cobaya syntax, 'd' = number of parameters; production default 40d)")
     parser.add_argument("--status", action="store_true", help="print convergence of the production run")
     args = parser.parse_args()
 
@@ -82,14 +99,17 @@ def main():
 
     from lya_interface.configuration import load_configuration
     info = load_configuration(production_yaml)
+    if args.test:
+        info["output"] = "test/mcmc"
     if args.status:
         sys.exit(status(info["output"]))
 
     if args.test:
-        info["output"] = "test/mcmc"
         info["resume"] = False
         info["force"] = True
-        info["sampler"]["mcmc"].update(max_samples=args.test_samples, seed=1)
+        # seed: Cobaya derives a different seed for every MPI rank from it
+        info["sampler"]["mcmc"].update(max_samples=args.test_samples, seed=1,
+                                       learn_every=args.learn_every)
 
     from cobaya.run import run
     rank = mpi_rank()

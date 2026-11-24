@@ -97,15 +97,39 @@ covariance.
    conda activate lace
    MPICC="cc -shared" pip install --force-reinstall --no-cache-dir --no-binary=mpi4py mpi4py
    ```
-3. Copy `OUT_DIR` (`best_fit.npy`, `proposal_covmat.txt`, `cobaya_mcmc.yaml`) to
-   the same place in the NERSC `lya_interface` checkout, or rerun the notebook
-   there.
-4. ForestFlow assets: the `forest_mpg_gp` bundle and
-   `ForestFlow/data/covariance/l1O_cov_forest_mpg_gp.npy` must be present.
+3. Check out the analysis branches: cup1d `high_res`, lya_interface `hires`,
+   ForestFlow `high_res`, LaCE `hires`. Record the four commit SHAs.
+4. Copy the files that are **not in git** (both are git-ignored), keeping the
+   same relative paths:
+   ```bash
+   # -R keeps the paths relative to the current folder: run it from igmhub
+   cd ~/Proyectos/projects/lya/igmhub
+   # destination: the NERSC folder containing the cup1d and lya_interface checkouts
+   rsync -avR lya_interface/output/hires_forestflow/cobaya_mcmc/{cobaya_mcmc.yaml,proposal_covmat.txt,best_fit.npy,gauss_newton_covmat.txt} \
+              cup1d/data/ics/DESIY1_QMLE3_Karacayli2022_forest_mpg_gp_ic_global.npy \
+              <user>@perlmutter.nersc.gov:<igmhub on NERSC>/
+   ```
+   The production run needs only `cobaya_mcmc.yaml` and `proposal_covmat.txt`.
+   `best_fit.npy` is for the notebook. The IC file is read by native cup1d
+   (validation notebooks); without it cup1d silently starts from the fiducial
+   values instead.
+5. Everything else the analysis reads is in git (checked by tracing the files
+   opened by both pipelines): the P1D data (`cup1d/data/p1d_measurements/`
+   Karacayli2025 DESI fits file and Karacayli2022), the GP emulator
+   (`ForestFlow/data/gp_emulators/forest_mpg_gp.pkl`), its covariance
+   (`ForestFlow/data/covariance/l1O_cov_forest_mpg_gp.npy`), the training-set
+   cosmologies and IGM histories (`LaCE/data/sim_suites/Australia20/`), the
+   cup1d defaults and the hires config.
+6. Package versions. The GP emulator is a scikit-learn pickle: use the same
+   scikit-learn (1.5.2) to load it. Use the same CAMB (2.0.0), so the linear
+   power matches. Versions on the laptop: numpy 2.5.1, scipy 1.18.0,
+   scikit-learn 1.5.2, camb 2.0.0, cobaya 3.6.2, getdist 1.7.7, torch 2.13.0.
 
 ### 6. Test on the login node
 
 ```bash
+cd <lya_interface on NERSC>
+export RUN_DIR=$PWD/output/hires_forestflow/cobaya_mcmc   # used in the commands below
 OMP_NUM_THREADS=4 python scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml --test --test-samples 50
 ```
 
@@ -114,7 +138,8 @@ Keep it short: login nodes are shared.
 ### 7. Chains x threads (interactive compute node)
 
 ```bash
-salloc -A <account> -C cpu -q interactive -N 1 -t 00:30:00
+salloc -A desi -C cpu -q interactive -N 1 -t 00:30:00
+conda activate lace
 python scripts/thread_scaling.py examples/hires_forestflow_evaluate.yaml \
     --threads 1 2 4 8 16 32 --cores-per-node 128 --node-memory-gb 512
 ```
@@ -123,18 +148,56 @@ It reports seconds per call and memory per rank for each thread count, and per
 split of the node: chains, likelihood calls per second per node and total
 memory, and the best split with at least 4 chains.
 
+(lace) jjchaves@nid200000:/global/cfs/projectdirs/desi/users/jjchaves/packages/lya_interface> python scripts/thread_scaling.py examples/hires_forestflow_evaluate.yaml \
+>     --threads 1 2 4 8 16 32 --cores-per-node 128 --node-memory-gb 512
+  1 threads: 0.134 s per call, 0.3 GB, setup 17 s
+  2 threads: 0.133 s per call, 0.3 GB, setup 12 s
+  4 threads: 0.134 s per call, 0.3 GB, setup 12 s
+  8 threads: 0.134 s per call, 0.3 GB, setup 13 s
+ 16 threads: 0.134 s per call, 0.4 GB, setup 12 s
+ 32 threads: 0.134 s per call, 0.4 GB, setup 13 s
+
+node of 128 cores and 512 GB:
+ threads  chains   s/call  calls/s per node  memory GB
+       1     128    0.134             956.4       39.4
+       2      64    0.133             480.7       19.9
+       4      32    0.134             238.3       10.4
+       8      16    0.134             119.5        5.5
+      16       8    0.134              59.8        3.1
+      32       4    0.134              29.9        1.8
+
+highest throughput with >= 4 chains: 128 chains x 1 threads. Fewer, faster chains reach a given length sooner; more chains give more samples per hour once they have converged.
+
+
 **Chains are not emcee walkers.** emcee walkers form one ensemble and need
 ~2 x 53 of them. A Cobaya chain is an independent Metropolis chain (one per MPI
 rank) with a proposal covariance learned from all of them; a handful (4-16) is
 enough to measure convergence. More chains give more samples per hour; faster
 chains (more threads) burn in sooner.
 
-### 8. Production
+### 8. Test job, then production
 
-Edit the top of `scripts/nersc/mcmc_job.sh`: `--account`, `--ntasks-per-node`
-(chains), `--cpus-per-task` (= 2 x `THREADS`: Perlmutter counts hardware
-threads, 256 per node), `THREADS`, `LYA_INTERFACE`, `RUN_DIR`, `MAX_JOBS`,
-`activate_environment`. Then
+`scripts/nersc/mcmc_job.sh` is set up for account `desi`, 64 chains x 1
+thread per node (`--ntasks-per-node=64`, `--cpus-per-task=4`: two cores per
+chain; threads do not help, 0.134 s per call for 1-32 threads), and the NERSC
+`LYA_INTERFACE`. Check `activate_environment` and `MAX_JOBS` at its top.
+
+**Test job** (debug queue, the whole path with 64 chains): 1000 accepted points
+per chain (`TEST_SAMPLES`) in `RUN_DIR/test/` (overwritten), with convergence
+checks every `5d` accepted points so the checkpoint, the learned covariance
+and the progress file are written. No resubmission. The log ends with the
+files in `test/` and a status report that reloads the chains:
+
+```bash
+sbatch --qos=debug --time=00:30:00 --export=ALL,MODE=test scripts/nersc/mcmc_job.sh
+```
+
+Check in `lya_mcmc-<jobid>.out`: `test/mcmc.1.txt` ... `mcmc.64.txt`,
+`mcmc.covmat`, `mcmc.checkpoint`, `mcmc.progress` written; "reloaded: N
+points" with the physical columns `As`, `ns`, `Delta2star`; no errors. Same
+check by hand: `python scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml --test --status`.
+
+**Production:**
 
 ```bash
 sbatch scripts/nersc/mcmc_job.sh
