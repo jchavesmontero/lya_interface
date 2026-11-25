@@ -51,6 +51,20 @@ python scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml --status   # R-1 so far
 
 Chains: `$RUN_DIR/chains/`. Copies of all logs: `$RUN_DIR/logs/`.
 
+Diagnostics of the chains so far (login node, about a minute; stuck chains,
+R-1 of each parameter, mass at prior edges, learned proposal):
+
+```bash
+python scripts/chain_diagnostics.py $RUN_DIR        # test chains: add --prefix test/mcmc
+cat $RUN_DIR/diagnostics/chains/summary.txt
+```
+
+To look at the figures on the laptop, copy only that folder (small):
+
+```bash
+rsync -av jjchaves@perlmutter.nersc.gov:<RUN_DIR>/diagnostics <local RUN_DIR>/
+```
+
 ## If something changed
 
 - Code, priors or configuration changed: start again from step 1, which redoes
