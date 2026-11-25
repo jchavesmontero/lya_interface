@@ -35,7 +35,19 @@ sbatch --qos=debug --time=00:30:00 --export=ALL,MODE=test scripts/nersc/mcmc_job
 Check `logs/lya_mcmc-<jobid>.out`: acceptance rate (roughly 0.1-0.4), time per
 step, and the final status report (chains reloaded, `covmat` written).
 
-## 3. Production (resubmits itself until converged)
+## 3. Production
+
+First 30 min in the debug queue (the real chains, no resubmission), to check
+that everything works:
+
+```bash
+sbatch scripts/nersc/mcmc_job_test.sh
+```
+
+Check `logs/lya_mcmc_test-<jobid>.out`: no errors, chains written
+(`ls -lt $RUN_DIR/chains | head`), and after ~5 min a convergence check. Then
+the long run, which resubmits itself until converged and continues the same
+chains:
 
 ```bash
 sbatch scripts/nersc/mcmc_job.sh
