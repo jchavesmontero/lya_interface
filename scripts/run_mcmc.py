@@ -169,21 +169,53 @@ def status(prefix, detailed=False):
     return 0 if checkpoint.get("converged") else 1
 
 
+def sync_refs_from_chain(info, prefix):
+    """On resume, take every parameter's ``ref`` and ``proposal`` from the existing chains.
+
+    Cobaya's resume check (``is_equal_info``, 3.6.2) is meant to ignore
+    ``ref`` and ``proposal`` of parameters but does not, so any change of the
+    starting points blocks the resume ("different content of [params:As_cube]").
+    The chains' own ``updated.yaml`` holds the values used when the chain
+    started (e.g. rank 0's correlated start). Neither matters when resuming.
+
+    Returns the number of parameters updated.
+    """
+    path = Path(f"{prefix}.updated.yaml")
+    if not path.is_file():
+        return 0
+    old_params = load_yaml_tolerant(path)[0].get("params", {})
+    changed = 0
+    for name, definition in info["params"].items():
+        old = old_params.get(name)
+        if not (isinstance(definition, dict) and isinstance(old, dict)):
+            continue
+        for key in ("ref", "proposal"):
+            if key in old and definition.get(key) != old[key]:
+                definition[key] = old[key]
+                changed += 1
+            elif key not in old and key in definition:
+                definition.pop(key)
+                changed += 1
+    return changed
+
+
 def check_resume(info, prefix):
     """Print how the new run information differs from that of the existing chains.
 
     Cobaya refuses to resume when they differ ("Old and new run information not
     compatible") but names only the first difference. This lists every sampled
-    or derived parameter whose definition differs, ignoring what Cobaya ignores
-    on resume (ref, proposal, latex, renames, min, max), and the sampler options
-    that differ. Returns the number of differing parameters.
+    or derived parameter whose definition differs (after taking ref and
+    proposal from the chains, as a resume does), and the sampler options that
+    differ. Returns the number of differing parameters.
     """
     path = Path(f"{prefix}.updated.yaml")
     if not path.is_file():
         print(f"{path}: not found (nothing to resume)")
         return 0
     old = load_yaml_tolerant(path)[0]
-    ignored = {"ref", "proposal", "latex", "renames", "min", "max"}
+    sync_refs_from_chain(info, prefix)  # as a resume does
+    # Cobaya 3.6.2 compares every key of a parameter, ref and proposal included
+    ignored = {"latex", "renames"}
 
     def clean(definition):
         if not isinstance(definition, dict):
@@ -384,8 +416,11 @@ def main():
         pass
     # on resume Cobaya continues the chains and ignores the starting points
     resuming = bool(info.get("resume")) and read_checkpoint(info["output"]) is not None
-    if resuming and rank == 0:
-        print(f"resuming {info['output']} from its checkpoint", flush=True)
+    if resuming:
+        synced = sync_refs_from_chain(info, info["output"])
+        if rank == 0:
+            print(f"resuming {info['output']} from its checkpoint "
+                  f"(ref/proposal of the chains kept for {synced} entries)", flush=True)
     if args.start_scale > 0 and not resuming:
         distance = correlated_start(info, rank, args.start_scale)
         if distance is not None:

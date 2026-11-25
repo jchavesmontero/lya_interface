@@ -35,7 +35,7 @@
 #SBATCH --constraint=cpu
 #SBATCH --qos=regular
 #SBATCH --nodes=1
-#SBATCH --time=12:00:00
+#SBATCH --time=4:00:00
 #SBATCH --ntasks-per-node=64
 #SBATCH --cpus-per-task=4
 #SBATCH --output=logs/%x-%j.out
@@ -47,7 +47,7 @@ THREADS=1                          # OpenMP threads per chain
 LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
 # holds cobaya_mcmc.yaml, in the data folder
 RUN_DIR=$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc
-MAX_JOBS=${MAX_JOBS:-10}            # jobs in the self-resubmitting chain (mcmc_job_test.sh: 1)
+MAX_JOBS=${MAX_JOBS:-3}            # jobs in the self-resubmitting chain (mcmc_job_test.sh: 1)
 TEST_SAMPLES=1000                  # accepted points per chain in MODE=test (~10 min)
 CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin
 CONDA_ENV=lace                     # environment with the IGMHub packages
