@@ -7,3 +7,6 @@ dist/
 output/
 .ipynb_checkpoints/
 *.ipynb
+# Slurm job logs (new jobs write to logs/, ignored there)
+lya_mcmc-*.out
+prepare_mcmc-*.out
