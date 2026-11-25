@@ -102,9 +102,22 @@ else
     echo "job $JOB_INDEX is the last one (MAX_JOBS=$MAX_JOBS)"
 fi
 
-srun --cpu-bind=cores $RUN || true   # a time-limit kill still leaves a checkpoint
+# A time-limit kill ends the whole job here (the checkpoint is kept and the
+# successor resumes). Reaching the next line means the chains stopped by
+# themselves: converged, or failed (then stop the job chain instead of
+# resubmitting jobs that fail the same way).
+SRUN_STATUS=0
+srun --cpu-bind=cores $RUN || SRUN_STATUS=$?
 
-if $RUN --status && [ -n "$NEXT" ]; then
-    scancel "$NEXT"
-    echo "converged: cancelled job $NEXT"
+if $RUN --status; then
+    if [ -n "$NEXT" ]; then
+        scancel "$NEXT"
+        echo "converged: cancelled job $NEXT"
+    fi
+elif [ "$SRUN_STATUS" -ne 0 ]; then
+    if [ -n "$NEXT" ]; then
+        scancel "$NEXT"
+        echo "chains failed (srun exit code $SRUN_STATUS): cancelled job $NEXT; fix and resubmit"
+    fi
+    exit "$SRUN_STATUS"
 fi

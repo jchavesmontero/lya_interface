@@ -81,6 +81,22 @@ def repair_cobaya_files(prefix):
                   flush=True)
 
 
+def clear_stale_locks(prefix):
+    """Remove Cobaya lock files left by a killed job (``<prefix>*.locked``, ``*.lock_err``).
+
+    With ``COBAYA_USE_FILE_LOCKING=False`` (set by the Slurm jobs, as locks are
+    unreliable on CFS) Cobaya still refuses to start if ``<prefix>.input.yaml.locked``
+    exists, and a cancelled or killed job leaves it behind. The Slurm jobs never
+    overlap (each successor waits for the previous one to end), so a lock found
+    at start is stale.
+    """
+    folder, name = Path(prefix).parent, Path(prefix).name
+    for pattern in (f"{name}*.locked", f"{name}*.lock_err"):
+        for path in folder.glob(pattern):
+            path.unlink(missing_ok=True)
+            print(f"removed stale lock {path.name}", flush=True)
+
+
 def read_checkpoint(prefix):
     """Cobaya checkpoint of an output prefix, or None if absent."""
     path = Path(f"{prefix}.checkpoint")
@@ -163,7 +179,7 @@ def correlated_start(info, rank, scale):
     dispersed, and the chains spend long in burn-in). Here each MPI rank draws
     its start from ``N(best fit, scale**2 * C)``, with ``C`` the proposal
     covariance (unit cube) and the best fit the centre of the YAML ``ref``;
-    coordinates beyond a prior edge are reflected back into [0, 1].
+    draws with a coordinate outside [0, 1] are redrawn (reflected after 10000 tries).
 
     Returns the Mahalanobis distance of the start (in units of C), or None if
     there is no proposal covariance or a parameter has no ``ref`` centre (the
@@ -191,9 +207,16 @@ def correlated_start(info, rank, scale):
     seed = mcmc.get("seed")
     rng = np.random.default_rng(None if seed is None else [int(seed), rank])
     chol = np.linalg.cholesky(0.5 * (covariance + covariance.T))
-    offset = scale * chol @ rng.standard_normal(len(names))
-    start = np.abs(centre + offset)  # reflect at 0
-    start = np.where(start > 1, 2 - start, start)  # and at 1
+    # redraw until every coordinate is inside [0, 1]: reflecting at the edges
+    # (parameters at a bound, e.g. HCD amplitudes at 0) breaks the correlations
+    # and can leave the start many sigma away; reflection only as a fallback
+    for _ in range(10000):
+        start = centre + scale * chol @ rng.standard_normal(len(names))
+        if np.all((start >= 0) & (start <= 1)):
+            break
+    else:
+        start = np.abs(start)
+        start = np.where(start > 1, 2 - start, start)
     for name, value in zip(names, start):
         params[name]["ref"] = float(value)
     step = np.linalg.solve(chol, start - centre)
@@ -247,12 +270,17 @@ def main():
     rank = mpi_rank()
     if rank == 0:
         repair_cobaya_files(info["output"])
+        clear_stale_locks(info["output"])
     try:  # the other ranks wait for the repair
         from mpi4py import MPI
         MPI.COMM_WORLD.Barrier()
     except ImportError:
         pass
-    if args.start_scale > 0:
+    # on resume Cobaya continues the chains and ignores the starting points
+    resuming = bool(info.get("resume")) and read_checkpoint(info["output"]) is not None
+    if resuming and rank == 0:
+        print(f"resuming {info['output']} from its checkpoint", flush=True)
+    if args.start_scale > 0 and not resuming:
         distance = correlated_start(info, rank, args.start_scale)
         if distance is not None:
             print(f"[rank {rank}] start drawn from {args.start_scale} x proposal covariance: "
