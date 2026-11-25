@@ -74,9 +74,36 @@ export OMP_PLACES=threads
 export COBAYA_USE_FILE_LOCKING=False
 export OMP_PROC_BIND=spread
 PYTHON=$CONDA_PREFIX/bin/python    # the environment's interpreter, by full path
-RUN="$PYTHON $LYA_INTERFACE/scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml"
+RUN_MCMC="$PYTHON $LYA_INTERFACE/scripts/run_mcmc.py"
 source "$LYA_INTERFACE/scripts/nersc/job_log.sh"
-job_header "MCMC $MODE, $SLURM_NTASKS chains x $THREADS threads, job ${JOB_INDEX:-1} of at most $MAX_JOBS"
+
+# Which chain: every production run lives in its own RUN_DIR/chain_<n>, with
+# frozen copies of the YAML and proposal covariance it was started with.
+#   NEW_CHAIN=1  start chain_<last + 1> from the current RUN_DIR/cobaya_mcmc.yaml
+#   CHAIN=<n>    resume chain_<n> (resubmitted jobs pass their own)
+#   neither      resume the latest chain_<n>
+if [ "$MODE" = "test" ]; then
+    RUN_YAML=$RUN_DIR/cobaya_mcmc.yaml   # short chain in RUN_DIR/test/
+elif [ "${NEW_CHAIN:-0}" = "1" ]; then
+    RUN_YAML=$($RUN_MCMC "$RUN_DIR/cobaya_mcmc.yaml" --new-chain)
+elif [ -n "${CHAIN:-}" ]; then
+    RUN_YAML=$RUN_DIR/chain_$CHAIN/cobaya_mcmc.yaml
+else
+    LATEST=$(ls -d "$RUN_DIR"/chain_* 2>/dev/null | sort -V | tail -1)
+    if [ -z "$LATEST" ]; then
+        echo "no chain_<n> in $RUN_DIR: submit with --export=ALL,NEW_CHAIN=1 to start one"
+        exit 1
+    fi
+    RUN_YAML=$LATEST/cobaya_mcmc.yaml
+fi
+if [ ! -f "$RUN_YAML" ]; then
+    echo "missing $RUN_YAML"
+    exit 1
+fi
+CHAIN_DIR=$(dirname "$RUN_YAML")
+CHAIN=${CHAIN_DIR##*/chain_}
+RUN="$RUN_MCMC $RUN_YAML"
+job_header "MCMC $MODE in $CHAIN_DIR, $SLURM_NTASKS chains x $THREADS threads, job ${JOB_INDEX:-1} of at most $MAX_JOBS"
 
 if [ "$MODE" = "test" ]; then
     srun --cpu-bind=cores $RUN --test --test-samples "$TEST_SAMPLES" --learn-every 5d
@@ -96,7 +123,7 @@ fi
 NEXT=""
 if [ "$JOB_INDEX" -lt "$MAX_JOBS" ]; then
     NEXT=$(sbatch --parsable --dependency=afterany:"$SLURM_JOB_ID" \
-        --export=ALL,JOB_INDEX=$((JOB_INDEX + 1)) "$SCRIPT")
+        --export=ALL,JOB_INDEX=$((JOB_INDEX + 1)),CHAIN=$CHAIN,NEW_CHAIN=0 "$SCRIPT")
     echo "job $JOB_INDEX of at most $MAX_JOBS; next job $NEXT queued"
 else
     echo "job $JOB_INDEX is the last one (MAX_JOBS=$MAX_JOBS)"

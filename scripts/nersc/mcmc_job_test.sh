@@ -2,11 +2,12 @@
 # The production MCMC (mcmc_job.sh) for 30 minutes in the debug queue, to check
 # that everything works before launching the long self-resubmitting jobs:
 #
-#   sbatch scripts/nersc/mcmc_job_test.sh     # check logs/lya_mcmc_test-<jobid>.out
-#   sbatch scripts/nersc/mcmc_job.sh          # then the real thing
+#   sbatch --export=ALL,NEW_CHAIN=1 scripts/nersc/mcmc_job_test.sh   # new chain_<n>
+#   sbatch scripts/nersc/mcmc_job.sh          # then the real thing (resumes it)
 #
-# Same chains, settings and code path as mcmc_job.sh (it runs that script):
-# it starts or resumes chains/mcmc, so its 30 minutes count for the run. The
+# Same chains, settings and code path as mcmc_job.sh (it runs that script,
+# with the same NEW_CHAIN / CHAIN choice of chain_<n> folder), so its 30
+# minutes count for the run. The
 # only differences are the queue, the time limit and that it queues no
 # successor (MAX_JOBS=1). Not to be confused with MODE=test of mcmc_job.sh,
 # a short separate chain in test/.

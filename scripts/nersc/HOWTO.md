@@ -37,39 +37,44 @@ step, and the final status report (chains reloaded, `covmat` written).
 
 ## 3. Production
 
-First 30 min in the debug queue (the real chains, no resubmission), to check
+Every production run lives in its own numbered folder `$RUN_DIR/chain_<n>/`,
+with frozen copies of the YAML and proposal covariance it started from (later
+prepare jobs never change it). Jobs never write outside their chain folder.
+
+Start a new chain with 30 min in the debug queue (no resubmission), to check
 that everything works:
 
 ```bash
-sbatch scripts/nersc/mcmc_job_test.sh
+sbatch --export=ALL,NEW_CHAIN=1 scripts/nersc/mcmc_job_test.sh
 ```
 
-Check `logs/lya_mcmc_test-<jobid>.out`: no errors, chains written
-(`ls -lt $RUN_DIR/chains | head`), and after ~5 min a convergence check. Then
-the long run, which resubmits itself until converged and continues the same
-chains:
+Check `logs/lya_mcmc_test-<jobid>.out`: the chain folder in the header
+(e.g. `chain_1`), no errors, chains written (`ls -lt $RUN_DIR/chain_1 | head`),
+and after ~5 min a convergence check with `Updated covariance matrix of
+proposal pdf`. Then the long run, which resumes the latest chain and
+resubmits itself until converged:
 
 ```bash
 sbatch scripts/nersc/mcmc_job.sh
 ```
 
-Follow it:
+Follow it (`<n>`: the chain number):
 
 ```bash
-squeue --me                                              # running and queued jobs
-tail -f logs/lya_mcmc-<jobid>.out                        # current job
-python scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml --status   # R-1 so far (seconds)
+squeue --me                                                     # running and queued jobs
+tail -f logs/lya_mcmc-<jobid>.out                               # current job
+python scripts/run_mcmc.py $RUN_DIR/chain_<n>/cobaya_mcmc.yaml --status   # R-1 so far (seconds)
 # add --detailed to also count every chain and reload them (minutes for long chains)
 ```
 
-Chains: `$RUN_DIR/chains/`. Copies of all logs: `$RUN_DIR/logs/`.
+Copies of all logs: `$RUN_DIR/logs/`.
 
-Diagnostics of the chains so far (login node, about a minute; stuck chains,
-R-1 of each parameter, mass at prior edges, learned proposal):
+Diagnostics of the latest chain so far (login node, about a minute; stuck
+chains, R-1 of each parameter, mass at prior edges, learned proposal):
 
 ```bash
-python scripts/chain_diagnostics.py $RUN_DIR        # test chains: add --prefix test/mcmc
-cat $RUN_DIR/diagnostics/chains/summary.txt
+python scripts/chain_diagnostics.py $RUN_DIR        # another chain: --prefix chain_<n>/mcmc
+cat $RUN_DIR/diagnostics/chain_<n>/summary.txt
 ```
 
 To look at the figures on the laptop, copy only that folder (small):
@@ -80,17 +85,18 @@ rsync -av jjchaves@perlmutter.nersc.gov:<RUN_DIR>/diagnostics <local RUN_DIR>/
 
 ## If something changed
 
-- Code, priors or configuration changed: start again from step 1, which redoes
-  the fit. Move the old `$RUN_DIR/chains/` aside before step 3, otherwise the
-  production run resumes it.
+- Code, priors or configuration changed: start again from step 1 (redoes the
+  fit), then step 3 with `NEW_CHAIN=1`: a new `chain_<n+1>`; old chains are
+  left untouched.
 - Only want new covariances or YAML from the saved best fit:
-  `sbatch --export=ALL,REUSE=1 scripts/nersc/prepare_job.sh`
+  `sbatch --export=ALL,REUSE=1 scripts/nersc/prepare_job.sh` (affects new
+  chains only).
 - A production job stopped (time limit, node failure): `sbatch scripts/nersc/mcmc_job.sh`
-  again; it resumes from the checkpoint.
+  again; it resumes the latest chain from its checkpoint (`--export=ALL,CHAIN=<n>`
+  for another one).
 - Restart a running production with new code or sampler settings: cancel the
   running job **and** its queued successor, then submit again (never two job
-  chains at once: they would write the same chains). It resumes from the
-  checkpoint:
+  chains on the same chain folder: they would write the same files):
   ```bash
   scancel --me --name=lya_mcmc
   sbatch scripts/nersc/mcmc_job.sh

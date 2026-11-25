@@ -23,10 +23,10 @@ coordinates Cobaya samples (``<name>_cube``, prior range [0, 1]).
 
 Usage (NERSC login node, about a minute for 64 long chains)::
 
-    python scripts/chain_diagnostics.py $RUN_DIR               # production chains
+    python scripts/chain_diagnostics.py $RUN_DIR               # latest chain_<n>
     python scripts/chain_diagnostics.py $RUN_DIR --prefix test/mcmc
 
-Output: ``$RUN_DIR/diagnostics/<prefix name>/`` unless ``--out`` is given.
+Output: ``$RUN_DIR/diagnostics/<chain folder>/`` (e.g. ``chain_1``) unless ``--out`` is given.
 """
 import argparse
 from pathlib import Path
@@ -62,7 +62,9 @@ def weighted_mean_var(values, weights):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("run_dir", help="run folder (holds cobaya_mcmc.yaml, chains/, test/)")
-    parser.add_argument("--prefix", default="chains/mcmc", help="chain prefix relative to run_dir")
+    parser.add_argument("--prefix", default=None,
+                        help="chain prefix relative to run_dir (default: the latest chain_<n>/mcmc; "
+                             "test/mcmc for the test chain)")
     parser.add_argument("--out", default=None, help="output folder (default run_dir/diagnostics/<prefix name>)")
     parser.add_argument("--burn", type=float, default=0.5, help="fraction of each chain skipped in statistics")
     parser.add_argument("--n-worst", type=int, default=8, help="parameters in worst_traces.png")
@@ -74,6 +76,12 @@ def main():
     import yaml
 
     run_dir = Path(args.run_dir).expanduser().resolve()
+    if args.prefix is None:
+        chains = sorted((f for f in run_dir.glob("chain_*") if f.name[6:].isdigit()),
+                        key=lambda f: int(f.name[6:]))
+        if not chains:
+            raise SystemExit(f"no chain_<n> folder in {run_dir}; pass --prefix")
+        args.prefix = f"{chains[-1].name}/mcmc"
     prefix = run_dir / args.prefix
     out = Path(args.out) if args.out else run_dir / "diagnostics" / Path(args.prefix).parent.name
     out.mkdir(parents=True, exist_ok=True)

@@ -91,7 +91,7 @@ set):
 
 Proposal covariance, in order of preference: `COVMAT_FROM` (e.g. the learned
 covariance of the full-data run, for a data split), the covariance learned by a
-previous production run (`chains/mcmc.covmat`), the Gauss-Newton one. Learned
+previous production run (`chain_<n>/mcmc.covmat` of the latest chain), the Gauss-Newton one. Learned
 covariances are in unit-cube units, i.e. relative to the prior ranges: reuse
 them only between runs with the same priors.
 

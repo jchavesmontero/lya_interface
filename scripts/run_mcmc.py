@@ -169,6 +169,50 @@ def status(prefix, detailed=False):
     return 0 if checkpoint.get("converged") else 1
 
 
+def check_resume(info, prefix):
+    """Print how the new run information differs from that of the existing chains.
+
+    Cobaya refuses to resume when they differ ("Old and new run information not
+    compatible") but names only the first difference. This lists every sampled
+    or derived parameter whose definition differs, ignoring what Cobaya ignores
+    on resume (ref, proposal, latex, renames, min, max), and the sampler options
+    that differ. Returns the number of differing parameters.
+    """
+    path = Path(f"{prefix}.updated.yaml")
+    if not path.is_file():
+        print(f"{path}: not found (nothing to resume)")
+        return 0
+    old = load_yaml_tolerant(path)[0]
+    ignored = {"ref", "proposal", "latex", "renames", "min", "max"}
+
+    def clean(definition):
+        if not isinstance(definition, dict):
+            return {"value": definition}
+        return {k: v for k, v in definition.items() if k not in ignored}
+
+    old_params, new_params = old.get("params", {}), info.get("params", {})
+    differing = 0
+    for name in sorted(set(old_params) | set(new_params)):
+        if name not in old_params or name not in new_params:
+            print(f"  {name}: only in the {'new' if name in new_params else 'old'} run")
+            differing += 1
+            continue
+        a, b = clean(old_params[name]), clean(new_params[name])
+        if a != b:
+            differing += 1
+            print(f"  {name}:")
+            for key in sorted(set(a) | set(b)):
+                if a.get(key) != b.get(key):
+                    print(f"      {key}: old {a.get(key)!r}")
+                    print(f"      {key}: new {b.get(key)!r}")
+    old_mcmc, new_mcmc = old.get("sampler", {}).get("mcmc", {}), info["sampler"]["mcmc"]
+    for key in sorted(set(new_mcmc)):
+        if key in old_mcmc and old_mcmc[key] != new_mcmc[key]:
+            print(f"  sampler.mcmc.{key}: old {old_mcmc[key]!r}, new {new_mcmc[key]!r}")
+    print(f"{differing} parameters differ")
+    return differing
+
+
 def correlated_start(info, rank, scale):
     """Set this rank's starting point to a draw from the proposal covariance.
 
@@ -223,6 +267,52 @@ def correlated_start(info, rank, scale):
     return float(np.sqrt(step @ step))
 
 
+CHAIN_PREFIX = "chain_"
+
+
+def chain_folders(run_dir):
+    """Existing ``chain_<n>`` folders of a run folder, in increasing ``n``."""
+    folders = [f for f in Path(run_dir).glob(f"{CHAIN_PREFIX}*")
+               if f.is_dir() and f.name[len(CHAIN_PREFIX):].isdigit()]
+    return sorted(folders, key=lambda f: int(f.name[len(CHAIN_PREFIX):]))
+
+
+def new_chain(production_yaml):
+    """Create the next ``chain_<n>`` next to a production YAML and freeze its inputs there.
+
+    The folder gets a copy of the production YAML, with its output set to
+    ``mcmc`` inside the folder, and of the proposal covariance it names. Runs
+    and resumes use that copy, so rewriting the run folder's YAML or covariance
+    (e.g. a new prepare job) never changes an existing chain, and a new chain
+    never writes into an old one.
+
+    Returns
+    -------
+    pathlib.Path
+        The new chain's production YAML.
+    """
+    import shutil
+    import yaml
+
+    production_yaml = Path(production_yaml).resolve()
+    run_dir = production_yaml.parent
+    existing = chain_folders(run_dir)
+    number = int(existing[-1].name[len(CHAIN_PREFIX):]) + 1 if existing else 1
+    folder = run_dir / f"{CHAIN_PREFIX}{number}"
+    folder.mkdir()  # fails if it exists: never reuse a chain folder
+    info = yaml.safe_load(production_yaml.read_text())
+    info["output"] = "mcmc"
+    covmat = info.get("sampler", {}).get("mcmc", {}).get("covmat")
+    if covmat:
+        shutil.copy2(run_dir / covmat, folder / Path(covmat).name)
+        info["sampler"]["mcmc"]["covmat"] = Path(covmat).name
+    (folder / production_yaml.name).write_text(
+        f"# Chain {number}: frozen copy of {production_yaml.name} (and its proposal covariance)\n"
+        "# made when the chain was created; the run and its resumes read this file.\n"
+        + yaml.safe_dump(info, sort_keys=False))
+    return folder / production_yaml.name
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("production_yaml", help="production Cobaya YAML (relative paths from its folder)")
@@ -235,14 +325,28 @@ def main():
                         help="test: accepted points per chain between convergence checks "
                              "(Cobaya syntax, 'd' = number of parameters; production default 40d)")
     parser.add_argument("--status", action="store_true", help="print convergence of the production run")
+    parser.add_argument("--check-resume", action="store_true",
+                        help="list how the run information differs from that of the existing chains")
     parser.add_argument("--detailed", action="store_true",
                         help="with --status: also read every chain and reload them (slow for long chains)")
+    parser.add_argument("--new-chain", action="store_true",
+                        help="create the next chain_<n> folder next to the production YAML, "
+                             "print the path of its YAML and exit")
     parser.add_argument("--start-scale", type=float, default=0.1,
                         help="each chain starts at a draw from N(best fit, scale^2 * proposal "
                              "covariance); 0 keeps the independent YAML references")
     args = parser.parse_args()
 
     production_yaml = Path(args.production_yaml).resolve()
+    if args.new_chain:
+        print(new_chain(production_yaml))
+        return
+    # production chains only inside their own chain_<n> folder (see --new-chain),
+    # so that an old run is never resumed or overwritten by mistake
+    if not (args.test or args.status or args.check_resume) and \
+            not production_yaml.parent.name.startswith(CHAIN_PREFIX):
+        sys.exit(f"{production_yaml} is not in a {CHAIN_PREFIX}<n> folder: create one with "
+                 "--new-chain (or NEW_CHAIN=1 in the Slurm job)")
     os.chdir(production_yaml.parent)  # covmat, output and interface_base are relative to it
 
     from lya_interface.configuration import load_configuration
@@ -258,6 +362,8 @@ def main():
         info["output"] = "test/mcmc"
     if args.status:
         sys.exit(status(info["output"], detailed=args.detailed))
+    if args.check_resume:
+        sys.exit(1 if check_resume(info, info["output"]) else 0)
 
     if args.test:
         info["resume"] = False

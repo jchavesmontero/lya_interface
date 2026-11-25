@@ -22,7 +22,8 @@ from time import perf_counter
 
 import numpy as np
 
-CHAIN_PREFIX = "chains/mcmc"  # production chains, relative to the run folder
+CHAIN_PREFIX = "chains/mcmc"  # output in the run folder YAML; production runs use
+# chain_<n>/ folders (scripts/run_mcmc.py --new-chain) with output "mcmc"
 TEST_PREFIX = "test/mcmc"  # test chains, relative to the run folder
 MAX_FRACTION = 0.25  # largest proposal sigma, as a fraction of the prior range
 
@@ -69,7 +70,10 @@ class RunPaths:
 
     @property
     def learned_covmat(self):
-        return self.folder / f"{CHAIN_PREFIX}.covmat"
+        """Covariance learned by the latest production chain (``chain_<n>/mcmc.covmat``), if any."""
+        chains = sorted((f for f in self.folder.glob("chain_*") if f.name[6:].isdigit()),
+                        key=lambda f: int(f.name[6:]))
+        return chains[-1] / "mcmc.covmat" if chains else self.folder / "chain_none/mcmc.covmat"
 
     @property
     def test_prefix(self):
