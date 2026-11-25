@@ -57,6 +57,17 @@ def count_samples(prefix):
     return counts
 
 
+def acceptance(prefix):
+    """Accepted points and total steps (sum of weights, first column) over all chain files."""
+    import numpy as np
+    accepted, steps = 0, 0.0
+    for chain in sorted(Path(prefix).parent.glob(f"{Path(prefix).name}.*.txt")):
+        weights = np.loadtxt(chain, usecols=0, ndmin=1)
+        accepted += len(weights)
+        steps += float(weights.sum())
+    return accepted, steps
+
+
 def status(prefix):
     """Print the convergence status of a run and reload it; return the exit code."""
     checkpoint = read_checkpoint(prefix)
@@ -65,8 +76,12 @@ def status(prefix):
         return 2
     print(f"{prefix}: converged = {checkpoint.get('converged')}, "
           f"R-1 (last) = {checkpoint.get('Rminus1_last')}, chains = {checkpoint.get('mpi_size')}")
-    for name, n in count_samples(prefix).items():
+    counts = count_samples(prefix)
+    for name, n in counts.items():
         print(f"  {name}: {n} accepted points")
+    accepted, steps = acceptance(prefix)
+    if steps:
+        print(f"  all chains: {accepted} accepted out of {steps:.0f} steps (acceptance {accepted / steps:.2f})")
     for suffix in ("covmat", "progress", "updated.yaml"):
         path = Path(f"{prefix}.{suffix}")
         print(f"  {path.name}: {'written' if path.is_file() else 'MISSING'}")
@@ -148,7 +163,14 @@ def main():
     os.chdir(production_yaml.parent)  # covmat, output and interface_base are relative to it
 
     from lya_interface.configuration import load_configuration
+    from lya_interface.mcmc_setup import MCMC_SETTINGS
     info = load_configuration(production_yaml)
+    # sampler settings added to the defaults after the YAML was written (e.g.
+    # learn_proposal_Rminus1_max); values in the YAML win. Cobaya takes the new
+    # value of these on resume.
+    mcmc = info["sampler"]["mcmc"]
+    added = {key: value for key, value in MCMC_SETTINGS.items() if key not in mcmc}
+    mcmc.update(added)
     if args.test:
         info["output"] = "test/mcmc"
     if args.status:
@@ -168,6 +190,8 @@ def main():
         if distance is not None:
             print(f"[rank {rank}] start drawn from {args.start_scale} x proposal covariance: "
                   f"distance {distance:.2f} sigma from the best fit", flush=True)
+    if rank == 0 and added:
+        print(f"sampler settings not in the YAML, from lya_interface.mcmc_setup: {added}", flush=True)
     if rank == 0:
         print(f"{'test' if args.test else 'production'} run of {production_yaml}, output {info['output']}, "
               f"OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS', 'unset')}", flush=True)
@@ -175,8 +199,11 @@ def main():
     _, sampler = run(info)
     seconds = perf_counter() - t0
 
+    # products() broadcasts over MPI (share_mpi): every rank must call it, or
+    # rank 0 waits forever for the others after sampling has finished
+    products = sampler.products() if args.test else None
     if args.test and rank == 0:
-        chain = sampler.products()["sample"]
+        chain = products["sample"]
         steps = float(chain["weight"].sum())
         per_step = seconds / steps
         print(f"\ntest run: {seconds:.0f} s, {len(chain)} accepted points out of {steps:.0f} steps "

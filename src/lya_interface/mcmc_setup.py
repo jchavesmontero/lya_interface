@@ -29,6 +29,11 @@ MAX_FRACTION = 0.25  # largest proposal sigma, as a fraction of the prior range
 # Metropolis settings of the production run (see the notebook for the reasons).
 MCMC_SETTINGS = {
     "learn_proposal": True,
+    # Cobaya learns the proposal only once R-1 is below this; its default (2)
+    # left the hires run on the starting Gauss-Newton covariance for hours at
+    # R-1 ~ 3-4. 30 is Cobaya's own value when the starting covariance is
+    # incomplete.
+    "learn_proposal_Rminus1_max": 30,
     "drag": False,  # speed ratios between blocks < 2: nothing to gain
     "oversample_power": 0,
     "proposal_scale": 1.9,

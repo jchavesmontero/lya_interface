@@ -60,3 +60,11 @@ Chains: `$RUN_DIR/chains/`. Copies of all logs: `$RUN_DIR/logs/`.
   `sbatch --export=ALL,REUSE=1 scripts/nersc/prepare_job.sh`
 - A production job stopped (time limit, node failure): `sbatch scripts/nersc/mcmc_job.sh`
   again; it resumes from the checkpoint.
+- Restart a running production with new code or sampler settings: cancel the
+  running job **and** its queued successor, then submit again (never two job
+  chains at once: they would write the same chains). It resumes from the
+  checkpoint:
+  ```bash
+  scancel --me --name=lya_mcmc
+  sbatch scripts/nersc/mcmc_job.sh
+  ```
