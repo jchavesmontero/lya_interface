@@ -318,9 +318,6 @@ else:
     plt.tight_layout()
 
 # %%
-TEST_EXISTS
-
-# %%
 if TEST_EXISTS:
     samples = load_samples(str(TEST_PREFIX), skip=0.3, to_getdist=True)
     labels = {"Delta2star": r"\Delta^2_\star", "nstar": r"n_\star", "alphastar": r"\alpha_\star"}
@@ -330,7 +327,7 @@ if TEST_EXISTS:
 
     # getdist drops parameters that never move (e.g. As/ns in a short test whose
     # steps in that block were all rejected), so plot only the ones it kept
-    wanted = ["Delta2star", "nstar", "igm_tau_eff_0", "igm_sigT_kms_0"]
+    wanted = ["Delta2star", "nstar", "igm_tau_eff_0", "igm_tau_eff_3", "igm_sigT_kms_0"]
     kept = [name for name in wanted if samples.getParamNames().parWithName(name) is not None]
     if set(wanted) - set(kept):
         print("constant in this chain, not plotted:", sorted(set(wanted) - set(kept)))

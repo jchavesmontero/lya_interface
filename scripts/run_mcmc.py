@@ -80,6 +80,53 @@ def status(prefix):
     return 0 if checkpoint.get("converged") else 1
 
 
+def correlated_start(info, rank, scale):
+    """Set this rank's starting point to a draw from the proposal covariance.
+
+    The production YAML gives every parameter an independent Gaussian ``ref``
+    around the best fit. With a strongly correlated posterior, independent
+    offsets of a fraction of each marginal sigma are many sigma away along the
+    narrow directions (Cobaya warns that the initial points are widely
+    dispersed, and the chains spend long in burn-in). Here each MPI rank draws
+    its start from ``N(best fit, scale**2 * C)``, with ``C`` the proposal
+    covariance (unit cube) and the best fit the centre of the YAML ``ref``;
+    coordinates beyond a prior edge are reflected back into [0, 1].
+
+    Returns the Mahalanobis distance of the start (in units of C), or None if
+    there is no proposal covariance or a parameter has no ``ref`` centre (the
+    YAML references are then used as they are).
+    """
+    import numpy as np
+    from lya_interface.mcmc_setup import read_covmat
+
+    mcmc = info["sampler"]["mcmc"]
+    covmat = mcmc.get("covmat")
+    if not covmat or not Path(covmat).is_file():
+        return None
+    covariance, names = read_covmat(covmat)
+    params = info["params"]
+    centre = []
+    for name in names:
+        ref = params.get(name, {}).get("ref") if isinstance(params.get(name), dict) else None
+        if isinstance(ref, dict) and "loc" in ref:
+            centre.append(float(ref["loc"]))
+        elif isinstance(ref, (int, float)):
+            centre.append(float(ref))
+        else:
+            return None
+    centre = np.array(centre)
+    seed = mcmc.get("seed")
+    rng = np.random.default_rng(None if seed is None else [int(seed), rank])
+    chol = np.linalg.cholesky(0.5 * (covariance + covariance.T))
+    offset = scale * chol @ rng.standard_normal(len(names))
+    start = np.abs(centre + offset)  # reflect at 0
+    start = np.where(start > 1, 2 - start, start)  # and at 1
+    for name, value in zip(names, start):
+        params[name]["ref"] = float(value)
+    step = np.linalg.solve(chol, start - centre)
+    return float(np.sqrt(step @ step))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("production_yaml", help="production Cobaya YAML (relative paths from its folder)")
@@ -92,6 +139,9 @@ def main():
                         help="test: accepted points per chain between convergence checks "
                              "(Cobaya syntax, 'd' = number of parameters; production default 40d)")
     parser.add_argument("--status", action="store_true", help="print convergence of the production run")
+    parser.add_argument("--start-scale", type=float, default=0.1,
+                        help="each chain starts at a draw from N(best fit, scale^2 * proposal "
+                             "covariance); 0 keeps the independent YAML references")
     args = parser.parse_args()
 
     production_yaml = Path(args.production_yaml).resolve()
@@ -113,6 +163,11 @@ def main():
 
     from cobaya.run import run
     rank = mpi_rank()
+    if args.start_scale > 0:
+        distance = correlated_start(info, rank, args.start_scale)
+        if distance is not None:
+            print(f"[rank {rank}] start drawn from {args.start_scale} x proposal covariance: "
+                  f"distance {distance:.2f} sigma from the best fit", flush=True)
     if rank == 0:
         print(f"{'test' if args.test else 'production'} run of {production_yaml}, output {info['output']}, "
               f"OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS', 'unset')}", flush=True)

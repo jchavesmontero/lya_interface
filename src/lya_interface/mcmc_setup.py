@@ -276,8 +276,11 @@ def write_production_yaml(fit, paths, interface_config, start_point, proposal_co
                           proposal_names, log=print):
     """Write the production YAML: interface base, starting ball, sampler, output.
 
-    Chains start from a Gaussian ball of 0.1 proposal sigma around
-    ``start_point`` (physical units), so the MPI chains are independent.
+    The ``ref`` of every parameter is a Gaussian of 0.1 proposal sigma around
+    ``start_point`` (physical units). ``scripts/run_mcmc.py`` replaces it, per
+    MPI rank, with a correlated draw from 0.1 x the proposal covariance around
+    the same centre (``--start-scale``), so the chains are independent and
+    start close to the posterior also along its narrow directions.
     """
     import yaml
     from lya_interface.configuration import portable_interface_base
