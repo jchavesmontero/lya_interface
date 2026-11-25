@@ -262,8 +262,8 @@ class Fit:
 
         The file stores the configuration path and digests of the configuration
         and its scientific assets, the override of the silicon-exponent reference,
-        the best-fit point and summary, the initial point and, when available, the
-        local errors. Chains, models and
+        the best-fit point and summary, the initial point, the otype (log or
+        linear) of every cup1d history and, when available, the local errors. Chains, models and
         emulators are never written.
 
         Parameters
@@ -278,6 +278,7 @@ class Fit:
         """
         if self.best_fit is None:
             raise ValueError("nothing to save: run minimize() first")
+        from lya_interface.initial_conditions import public_otypes
         fit = self.best_fit
         payload = {
             "format_version": FORMAT_VERSION,
@@ -288,6 +289,9 @@ class Fit:
             "drop_derived": self.drop_derived,
             "metal_alpha_reference": self.metal_alpha_reference,
             "initial_point": self.initial_point,
+            # log (exp) or linear (const) native histories, converted on load
+            # when the configuration changes them
+            "parameter_otypes": public_otypes(self.info, fit.point),
             "best_fit": {
                 "point": dict(fit.point),
                 "chi2_data": float(fit.chi2_data),
@@ -332,8 +336,11 @@ class Fit:
         -----
         UserWarning
             When another configuration than the recorded one is used, when the
-            configuration or its assets changed since the fit, or when the
-            recomputed ``-2 log L`` differs from the saved one.
+            configuration or its assets changed since the fit, when the
+            recomputed ``-2 log L`` differs from the saved one, or when values
+            are converted because the otype (log or linear) of a cup1d history
+            differs from the saved one (files without stored otypes used the
+            CM2026 baseline otypes); local errors are then not restored.
 
         Raises
         ------
@@ -397,10 +404,19 @@ class Fit:
                 f"missing {sorted(set(fit.reference) - set(point))}, "
                 f"extra {sorted(set(point) - set(fit.reference))}"
             )
+        # values saved with another otype (log or linear) than configured now
+        from lya_interface.initial_conditions import convert_point_otypes
+        saved_otypes = payload.get("parameter_otypes")
+        point, converted = convert_point_otypes(fit.info, point, saved_otypes)
+        if converted:
+            warnings.warn("Converted saved values to the configured otype: " + ", ".join(
+                f"{name} ({old} -> {new})" for name, (old, new) in converted.items()),
+                stacklevel=2)
         statistics = goodness_of_fit(fit.model, point)
         minus2 = -2 * float(np.sum(fit.model.logposterior(point, return_derived=False).loglikes))
         stored = saved.get("minus2_loglike_total")
-        if stored is not None and not np.isclose(minus2, stored, rtol=1e-8, atol=1e-6):
+        if stored is not None and not converted and \
+                not np.isclose(minus2, stored, rtol=1e-8, atol=1e-6):
             warnings.warn(f"Recomputed -2logL_total={minus2:.6g} differs from the saved "
                           f"{stored:.6g}.", stacklevel=2)
         fit.best_fit = PointFit(
@@ -413,9 +429,13 @@ class Fit:
             statistics,
         )
         initial = payload.get("initial_point")
-        fit.initial_point = None if initial is None else translate_legacy(initial)
+        fit.initial_point = None if initial is None else convert_point_otypes(
+            fit.info, translate_legacy(initial), saved_otypes)[0]
         errors = payload.get("local_errors")
-        if errors is not None:
+        if errors is not None and converted:
+            warnings.warn("Saved local errors are not restored because the otype of "
+                          f"{sorted(converted)} changed; re-estimate them.", stacklevel=2)
+        elif errors is not None:
             fit.local_errors = LocalErrors(translate_legacy(errors["errors"]),
                                            np.asarray(errors["covariance"]),
                                            np.asarray(errors["hessian"]),

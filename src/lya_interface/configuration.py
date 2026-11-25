@@ -1,4 +1,5 @@
 """Load complete example configurations and check duplicated registry definitions."""
+import os
 from copy import deepcopy
 from pathlib import Path
 from cobaya.yaml import yaml_load_file
@@ -123,6 +124,49 @@ def _set_references(info, references):
                 registry[name] = {**registry[name], "ref": deepcopy(ref)}
 
 
+CHECKOUT_PREFIX = "lya_interface:"
+
+
+def checkout_root():
+    """Return the root of the installed lya_interface checkout."""
+    import lya_interface
+    return Path(lya_interface.__file__).resolve().parents[2]
+
+
+def resolve_interface_base(value, folder):
+    """Resolve an ``interface_base`` entry.
+
+    Parameters
+    ----------
+    value : str
+        ``lya_interface:<path>`` (relative to :func:`checkout_root`), an
+        absolute path, or a path relative to ``folder``.
+    folder : pathlib.Path
+        Folder of the configuration that holds the entry.
+
+    Returns
+    -------
+    pathlib.Path
+    """
+    value = str(value)
+    if value.startswith(CHECKOUT_PREFIX):
+        return checkout_root() / value[len(CHECKOUT_PREFIX):]
+    return Path(folder) / value
+
+
+def portable_interface_base(config_path, folder):
+    """Return the ``interface_base`` entry that best survives moving between machines.
+
+    ``lya_interface:<path>`` for a configuration inside the checkout, else the
+    path relative to ``folder``.
+    """
+    config_path = Path(config_path).resolve()
+    try:
+        return CHECKOUT_PREFIX + config_path.relative_to(checkout_root()).as_posix()
+    except ValueError:
+        return os.path.relpath(config_path, folder)
+
+
 def load_configuration(path):
     """Load an interface YAML file and resolve inherited configuration.
 
@@ -146,6 +190,11 @@ def load_configuration(path):
 
     Notes
     -----
+    ``interface_base`` names the configuration this one overlays: a path
+    relative to this file, an absolute path, or ``lya_interface:<path>``
+    relative to the installed lya_interface checkout (portable between
+    machines, e.g. for run folders outside the checkout).
+
     ``fixed_parameters`` (public name to value) turns sampled parameters of the
     inherited configuration into fixed ones, in ``params`` and in every
     component's ``parameter_definitions``. ``reference_point`` (public name to
@@ -157,7 +206,7 @@ def load_configuration(path):
     path = Path(path).resolve()
     info = yaml_load_file(str(path))
     if "interface_base" in info:
-        base = load_configuration(path.parent / info.pop("interface_base"))
+        base = load_configuration(resolve_interface_base(info.pop("interface_base"), path.parent))
         base.update(info)
         info = base
     additions = info.pop("additional_likelihoods", {})

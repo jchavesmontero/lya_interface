@@ -41,7 +41,8 @@ set -euo pipefail
 # ---------------------------------------------------------------- edit these
 THREADS=1                          # OpenMP threads per chain
 LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
-RUN_DIR=$LYA_INTERFACE/output/hires_forestflow/cobaya_mcmc   # holds cobaya_mcmc.yaml
+# holds cobaya_mcmc.yaml, in the data folder
+RUN_DIR=$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc
 MAX_JOBS=10
 TEST_SAMPLES=1000                  # accepted points per chain in MODE=test (~10 min)
 CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin

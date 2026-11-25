@@ -1,7 +1,7 @@
 """Run, test or check a Cobaya MCMC from a production YAML.
 
-The production YAML (e.g. ``output/hires_forestflow/cobaya_mcmc/cobaya_mcmc.yaml``,
-written by ``notebooks/wip/hires_forestflow_cobaya_mcmc``) overlays an interface
+The production YAML (e.g. ``<cup1d output root>/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc/cobaya_mcmc.yaml``,
+written by ``scripts/prepare_mcmc.py`` or ``notebooks/wip/hires_forestflow_cobaya_mcmc``) overlays an interface
 configuration with the starting point, the proposal covariance, the sampler
 and the output prefix. Relative paths in it are relative to its folder, so the
 script runs from there.

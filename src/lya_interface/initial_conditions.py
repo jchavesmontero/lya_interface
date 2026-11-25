@@ -3,6 +3,7 @@ from pathlib import Path
 import warnings
 import numpy as np
 from cup1d.utils.ic_files import get_ic_path
+from cup1d.utils.otypes import convert_otype, history_otype, interp_ic_history, legacy_otype
 from cup1d.utils.utils import split_string
 from lya_interface.adapters.cup1d_backend import native_configuration
 from lya_interface.names import native_name
@@ -12,6 +13,89 @@ def _native_args(info):
     """Return the cup1d arguments of the configuration's ForestFlow theory."""
     forest = next(v for k, v in info["theory"].items() if k.endswith("ForestFlowTheory"))
     return native_configuration(forest["native_config"])[0]
+
+
+def _any_native_args(info):
+    """Return the cup1d arguments of the first component with a ``native_config``, else None."""
+    for section in ("theory", "likelihood"):
+        for options in info.get(section, {}).values():
+            if isinstance(options, dict) and options.get("native_config"):
+                return native_configuration(options["native_config"])[0]
+    return None
+
+
+def public_otypes(info, names):
+    """Return the otype (log ``exp`` or linear ``const``) of cup1d-owned parameters.
+
+    Parameters
+    ----------
+    info : dict
+        Resolved interface configuration.
+    names : iterable of str
+        Public parameter names.
+
+    Returns
+    -------
+    dict
+        Public name to the otype of its native history; parameters not owned by
+        cup1d (cosmology, Vega nuisances) are omitted, as are all parameters
+        when no component has a ``native_config``.
+    """
+    args = _any_native_args(info)
+    if args is None:
+        return {}
+    out = {}
+    for public in names:
+        native = native_name(public)
+        if native is None:
+            continue
+        otype = history_otype(args, split_string(native)[0])
+        if otype is not None:
+            out[public] = otype
+    return out
+
+
+def _prior_min(info, public):
+    """Return the lower prior bound of a sampled parameter, or None."""
+    definition = info.get("params", {}).get(public)
+    if isinstance(definition, dict) and isinstance(definition.get("prior"), dict):
+        return definition["prior"].get("min")
+    return None
+
+
+def convert_point_otypes(info, point, saved_otypes):
+    """Convert a saved point to the otypes of the configuration.
+
+    Parameters
+    ----------
+    info : dict
+        Resolved interface configuration.
+    point : mapping
+        Public name to value, in the otypes the point was saved with.
+    saved_otypes : mapping or None
+        Public name to saved otype. ``None`` (files written before otypes were
+        stored) means the CM2026 baseline otypes.
+
+    Returns
+    -------
+    point : dict
+        Copy of ``point`` with converted values. Non-positive linear values
+        converted to log take the lower prior bound.
+    converted : dict
+        Public name to ``(saved_otype, current_otype)`` of converted entries.
+    """
+    point = dict(point)
+    converted = {}
+    for public, otype in public_otypes(info, point).items():
+        if saved_otypes is not None:
+            old = saved_otypes.get(public)
+        else:
+            old = legacy_otype(split_string(native_name(public))[0])
+        if old is None or old == otype:
+            continue
+        point[public] = convert_otype(point[public], old, otype, floor=_prior_min(info, public))
+        converted[public] = (old, otype)
+    return point, converted
 
 
 def _node(args, family, index, public):
@@ -70,8 +154,8 @@ def save_global_ic(info, point, filename=None, variation=None, overwrite=False):
     Notes
     -----
     The format is that of ``Analysis.save_global_ic``/``Likelihood.set_ic_global``:
-    one ``{"z": nodes, "val": coefficients}`` entry per IGM and contaminant
-    family, plus ``{"val": value}`` for ``As`` and ``ns``. It can be read back
+    one ``{"z": nodes, "val": coefficients, "otype": otype}`` entry per IGM and
+    contaminant family, plus ``{"val": value}`` for ``As`` and ``ns``. It can be read back
     with :func:`global_ic_point` and by native cup1d.
     """
     args = _native_args(info)
@@ -91,7 +175,8 @@ def save_global_ic(info, point, filename=None, variation=None, overwrite=False):
         families.setdefault(family, []).append((_node(args, family, index, public), float(value)))
     for family, rows in families.items():
         rows.sort()
-        out[family] = {"z": np.array([z for z, _ in rows]), "val": np.array([v for _, v in rows])}
+        out[family] = {"z": np.array([z for z, _ in rows]), "val": np.array([v for _, v in rows]),
+                       "otype": history_otype(args, family)}
     path.parent.mkdir(parents=True, exist_ok=True)
     np.save(path, out, allow_pickle=True)
     return path
@@ -118,7 +203,8 @@ def ic_native_values(args, names, ic):
     Returns
     -------
     values : dict
-        Native name to the IC history at its node, for the families in ``ic``.
+        Native name to the IC history at its node, for the families in ``ic``,
+        converted to the otype configured in ``args``.
     missing : list of str
         Names whose family the IC does not store.
     """
@@ -129,7 +215,7 @@ def ic_native_values(args, names, ic):
             missing.append(native)
             continue
         znode = _node(args, family, index, native)
-        values[native] = float(np.interp(znode, ic[family]["z"], ic[family]["val"]))
+        values[native] = interp_ic_history(ic[family], family, znode, history_otype(args, family))
     return values, missing
 
 
@@ -171,7 +257,8 @@ def global_ic_point(info, reference, ic_file=None):
     Notes
     -----
     Mirrors ``Likelihood.set_ic_global``. ``HCD_const`` defaults to zero when
-    absent. Values outside the YAML prior bounds are reported by the caller.
+    absent. Histories are converted to the configured otype (log or linear)
+    from the one the file records (files without it used the baseline otypes). Values outside the YAML prior bounds are reported by the caller.
     """
     args = _native_args(info)
     if ic_file is None:
@@ -198,7 +285,8 @@ def global_ic_point(info, reference, ic_file=None):
             else:
                 missing.append(public)
             continue
-        point[public] = float(np.interp(znode, ic[family]["z"], ic[family]["val"]))
+        point[public] = interp_ic_history(ic[family], family, znode, history_otype(args, family),
+                                          floor=_prior_min(info, public))
     if missing:
         warnings.warn(f"IC file {ic_file.name} has no entry for {missing}; "
                       "keeping their reference values.", stacklevel=2)

@@ -95,15 +95,24 @@ if ROOT is None:
 CUP1D_CONFIG = Path(get_path_repo("cup1d")) / "configs/hires/hires_forestflow.yaml"
 INTERFACE_CONFIG = ROOT / "examples/hires_forestflow_evaluate.yaml"
 
-# Everything this notebook writes (explicit; output/ is not tracked by git).
-OUT_DIR = ROOT / "output/hires_forestflow/cobaya_mcmc"
+# Everything this notebook writes, in the data folder:
+# <OUTPUT_ROOT>/<data_label>/<variation or fit_type>/<emulator_label>
+# (out_folder of hires_forestflow.yaml). OUTPUT_ROOT is $CFS/data on NERSC and
+# <lya>/data on a laptop.
+if "CFS" in os.environ:
+    OUTPUT_ROOT = Path(os.environ["CFS"]) / "data"
+else:
+    OUTPUT_ROOT = Path(get_path_repo("cup1d")).parents[1] / "data"
+OUT_DIR = OUTPUT_ROOT / "DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-BESTFIT_FILE = OUT_DIR / "best_fit.npy"  # Fit.save: best fit + local errors
-GN_COVMAT_FILE = OUT_DIR / "gauss_newton_covmat.txt"  # from the best fit
-PROPOSAL_COVMAT_FILE = OUT_DIR / "proposal_covmat.txt"  # what the sampler uses
-PRODUCTION_YAML = OUT_DIR / "cobaya_mcmc.yaml"
-CHAIN_PREFIX = "chains/mcmc"  # production, relative to OUT_DIR
-TEST_PREFIX = OUT_DIR / "test/mcmc"
+# best_fit.npy, gauss_newton_covmat.txt, proposal_covmat.txt, cobaya_mcmc.yaml,
+# best_fit.png, chains/ and test/: the same files as scripts/prepare_mcmc.py
+from lya_interface import mcmc_setup
+
+paths = mcmc_setup.RunPaths(OUT_DIR)
+BESTFIT_FILE = paths.best_fit
+PRODUCTION_YAML = paths.production_yaml
+TEST_PREFIX = paths.test_prefix
 
 # Proposal covariance from another run (e.g. the full-data run when this is a
 # data split): its Cobaya ``<prefix>.covmat``. Parameters are matched by name;
@@ -111,6 +120,11 @@ TEST_PREFIX = OUT_DIR / "test/mcmc"
 COVMAT_FROM = None
 
 RUN_MINIMIZER = True  # minimize from the IC when no best fit is saved
+# Redo the best fit even when one is saved (starting from it), and with it the
+# Gauss-Newton errors, both covariances and the production YAML; a covariance
+# learned by a previous chain is not reused. Use it after changing the
+# configuration (priors, parameterization, data).
+FORCE_MINIMIZATION = True
 print("threads:", N_THREADS)
 print("output folder:", OUT_DIR)
 if not INTERFACE_CONFIG.is_file():
@@ -122,13 +136,7 @@ if not INTERFACE_CONFIG.is_file():
 # With the saved best fit and local errors when available.
 
 # %%
-from lya_interface.fit import Fit
-
-if BESTFIT_FILE.is_file():
-    fit = Fit.from_results(BESTFIT_FILE, config_path=INTERFACE_CONFIG)
-    print("restored best fit from", BESTFIT_FILE)
-else:
-    fit = Fit(INTERFACE_CONFIG)
+fit = mcmc_setup.load_fit(INTERFACE_CONFIG, paths)
 info, model = fit.info, fit.model
 names = list(fit.reference)  # sampled public names, in Cobaya order
 print(len(names), "sampled parameters")
@@ -159,109 +167,28 @@ print(len(names), "sampled parameters")
 # unit-cube units for the sampler; the others are physical.
 
 # %%
-from lya_interface.initial_conditions import global_ic_point
+start_point = mcmc_setup.ensure_best_fit(
+    fit, paths, force=FORCE_MINIMIZATION, run_minimizer=RUN_MINIMIZER)
 
-if fit.best_fit is None:
-    ic_point = global_ic_point(info, fit.reference)
-    if RUN_MINIMIZER:
-        t0 = perf_counter()
-        fit.minimize(ic_point)
-        print(f"minimization: {perf_counter() - t0:.0f} s, success={fit.best_fit.success}")
-        fit.save(BESTFIT_FILE)
-    else:
-        print("no best fit: the chain starts from the global IC")
-if fit.best_fit is not None:
-    fit.near_bounds()
-    if fit.local_errors is None:
-        t0 = perf_counter()
-        fit.estimate_errors()
-        print(f"Gauss-Newton errors: {perf_counter() - t0:.0f} s")
-        fit.save(BESTFIT_FILE)
-start_point = fit.best_fit.point if fit.best_fit is not None else global_ic_point(info, fit.reference)
+# %% [markdown]
+# ### Best-fit check
+#
+# Goodness of fit recomputed at the best fit (degrees of freedom
+# `N_data - N_sampled`), the compressed parameters (with the native DESI blinding
+# offsets unless `UNBLIND = True`) and the P1D of each data set with its
+# residuals. Error bars and per-panel chi2 use marginal (diagonal) blocks, so the
+# panel chi2 need not add up to the correlated total in the title. The figure is
+# saved as `best_fit.png` in `OUT_DIR`.
 
+# %%
+UNBLIND = False
+fig = mcmc_setup.plot_best_fit(
+    fit, paths, title="DESI DR1 + Karacayli2022, forest_mpg_gp: best fit", unblind=UNBLIND)
+plt.show()
 
-def write_covmat(filename, covariance, cov_names):
-    """Write a Cobaya covariance file: ``# name ...`` header and the matrix."""
-    np.savetxt(filename, covariance, header=" ".join(cov_names))
-
-
-def read_covmat(filename):
-    """Read a Cobaya covariance file into (matrix, names)."""
-    with open(filename) as handle:
-        cov_names = handle.readline().lstrip("#").split()
-    return np.loadtxt(filename), cov_names
-
-
-def regularized_covariance(covariance, cov_names, max_fraction=0.25, floor=1e-12):
-    """Symmetric positive-definite covariance with capped standard deviations.
-
-    Each standard deviation is limited to ``max_fraction`` of its prior range
-    (unconstrained or bound-limited directions otherwise get huge proposals);
-    correlations are kept. The eigenvalue floor (``floor`` times the largest)
-    is applied in units of each prior range: parameters span many orders of
-    magnitude (As ~ 1e-9), so a floor in physical units would inflate the
-    small ones (it gave sigma(As) ~ 3e-6 > As, so every As/ns step was rejected).
-    """
-    covariance = 0.5 * (covariance + covariance.T)
-    sigma = np.sqrt(np.clip(np.diag(covariance), 0, None))
-    width = np.array([info["params"][n]["prior"]["max"] - info["params"][n]["prior"]["min"]
-                      for n in cov_names])
-    good = sigma > 0
-    correlation = np.eye(len(sigma))
-    correlation[np.ix_(good, good)] = covariance[np.ix_(good, good)] / np.outer(sigma[good], sigma[good])
-    sigma = np.where(good, np.minimum(sigma, max_fraction * width), 0.01 * width)
-    scaled = correlation * np.outer(sigma / width, sigma / width)  # prior-range units
-    values, vectors = np.linalg.eigh(scaled)
-    values = np.clip(values, floor * values.max(), None)
-    return ((vectors * values) @ vectors.T) * np.outer(width, width)
-
-
-MAX_FRACTION = 0.25  # largest proposal sigma, as a fraction of the prior range
-
-if fit.local_errors is not None:
-    # cheap: always rebuilt from the saved errors, so a regularization change applies
-    errors = fit.local_errors
-    write_covmat(GN_COVMAT_FILE, regularized_covariance(errors.covariance, list(errors.names),
-                                                        max_fraction=MAX_FRACTION),
-                 list(errors.names))
-    print("wrote", GN_COVMAT_FILE)
-
-
-from lya_interface.unit_cube import covariance_from_unit_cube, covariance_to_unit_cube
-
-
-def covmat_problems(covariance, cov_names):
-    """Parameters whose proposal sigma exceeds MAX_FRACTION of their prior range."""
-    problems = {}
-    for name, variance in zip(cov_names, np.diag(covariance)):
-        prior_range = info["params"][name]["prior"]["max"] - info["params"][name]["prior"]["min"]
-        if not np.sqrt(variance) <= MAX_FRACTION * prior_range * (1 + 1e-6):
-            problems[name] = float(np.sqrt(variance) / prior_range)
-    return problems
-
-
-learned = OUT_DIR / f"{CHAIN_PREFIX}.covmat"
-proposal_cov, proposal_names = None, []  # physical units
-for source in (COVMAT_FROM, learned, GN_COVMAT_FILE):
-    if source is None or not Path(source).is_file():
-        continue
-    # physical units, whether the file was learned in the unit cube or not
-    covariance, cov_names = covariance_from_unit_cube(*read_covmat(source), info["params"])
-    problems = covmat_problems(covariance, cov_names)
-    if problems:  # e.g. one written by an earlier, buggy regularization
-        print(f"skipping {source}: sigma / prior range too large for", problems)
-        continue
-    proposal_cov, proposal_names = covariance, cov_names
-    write_covmat(PROPOSAL_COVMAT_FILE, *covariance_to_unit_cube(covariance, cov_names, info["params"]))
-    print("proposal covariance from", source)
-    break
-else:
-    PROPOSAL_COVMAT_FILE.unlink(missing_ok=True)
-    print("no proposal covariance: Cobaya will use the YAML proposal widths")
-
-missing = sorted(set(names) - set(proposal_names))
-if proposal_cov is not None and missing:
-    print("not in the proposal covariance (YAML proposal used):", missing)
+# %%
+proposal_cov, proposal_names = mcmc_setup.write_proposal_covmat(
+    fit, paths, covmat_from=COVMAT_FROM, force=FORCE_MINIMIZATION)
 
 # %% [markdown]
 # ## 2. Production YAML
@@ -296,47 +223,15 @@ if proposal_cov is not None and missing:
 # ```
 #
 # Choose chains x threads per node first with `scripts/thread_scaling.py` on a
-# compute node. Paths in the YAML are relative to `OUT_DIR`; on NERSC the
-# sibling checkouts must keep the same layout.
+# compute node. The covariance and the output in the YAML are relative to
+# `OUT_DIR`; the interface configuration is `lya_interface:<path>`, resolved
+# against the lya_interface checkout of each machine, so `OUT_DIR` can be copied
+# to `$CFS/data/...` on NERSC as it is. On NERSC the same files are produced
+# by `sbatch scripts/nersc/prepare_job.sh` (`scripts/prepare_mcmc.py`).
 
 # %%
-import yaml
-
-proposal_sigma = {}  # physical
-if proposal_cov is not None:
-    proposal_sigma = dict(zip(proposal_names, np.sqrt(np.diag(proposal_cov))))
-reference_point = {}
-for name in names:
-    scale = 0.1 * proposal_sigma.get(name, info["params"][name]["proposal"])
-    reference_point[name] = {"dist": "norm", "loc": float(start_point[name]), "scale": float(scale)}
-
-MCMC = {
-    "covmat": PROPOSAL_COVMAT_FILE.name if PROPOSAL_COVMAT_FILE.is_file() else None,
-    "learn_proposal": True,
-    "drag": False,  # speed ratios between blocks < 2: nothing to gain
-    "oversample_power": 0,
-    "proposal_scale": 1.9,
-    "Rminus1_stop": 0.02,  # tighten to 0.01 by resuming
-    "Rminus1_cl_stop": 0.2,
-    "burn_in": 0,
-    "max_tries": 10000,  # rejections in a row before a chain is declared stuck
-    "seed": None,
-}
-production = {
-    "interface_base": os.path.relpath(INTERFACE_CONFIG, OUT_DIR),
-    "sample_in_unit_cube": True,
-    "reference_point": reference_point,
-    "sampler": {"mcmc": MCMC},
-    "output": CHAIN_PREFIX,
-    "resume": True,
-}
-PRODUCTION_YAML.write_text(
-    "# Production Cobaya MCMC written by lya_interface/notebooks/wip/hires_forestflow_cobaya_mcmc.\n"
-    "# Test: python <lya_interface>/scripts/run_mcmc.py cobaya_mcmc.yaml --test\n"
-    "# Production: sbatch <lya_interface>/scripts/nersc/mcmc_job.sh (srun ... scripts/run_mcmc.py cobaya_mcmc.yaml)\n"
-    + yaml.safe_dump(production, sort_keys=False)
-)
-print("wrote", PRODUCTION_YAML)
+mcmc_setup.write_production_yaml(
+    fit, paths, INTERFACE_CONFIG, start_point, proposal_cov, proposal_names)
 
 # %% [markdown]
 # ## 3. Test run and time forecast
@@ -395,39 +290,52 @@ print(f"  python scripts/run_mcmc.py {os.path.relpath(PRODUCTION_YAML, ROOT)} --
 # learned covariance, and the getdist samples. Star parameters are blinded.
 
 # %%
+os.path.relpath(PRODUCTION_YAML, ROOT)
+
+# %%
 from cobaya import load_samples
 from getdist import plots
 
-collection = load_samples(str(TEST_PREFIX), skip=0, combined=True, to_getdist=False)
-data = collection.data
-print(f"read {len(data)} points; columns: {list(data.columns)[:6]} ...")
-print("learned covariance written:", Path(f"{TEST_PREFIX}.covmat").is_file())
+# written by the terminal test run of section 3
+TEST_EXISTS = Path(f"{TEST_PREFIX}.updated.yaml").is_file()
+if not TEST_EXISTS:
+    print(f"no test chain at {TEST_PREFIX}; run in a terminal, from the lya_interface folder:")
+    print(f"  python scripts/run_mcmc.py {os.path.relpath(PRODUCTION_YAML, ROOT)} --test --test-samples 1000")
+else:
+    collection = load_samples(str(TEST_PREFIX), skip=0, combined=True, to_getdist=False)
+    data = collection.data
+    print(f"read {len(data)} points; columns: {list(data.columns)[:6]} ...")
+    print("learned covariance written:", Path(f"{TEST_PREFIX}.covmat").is_file())
 
-fig, axes = plt.subplots(4, 1, figsize=(8, 9), sharex=True)
-axes[0].plot(data["minuslogpost"].to_numpy())
-axes[0].set_ylabel(r"$-\log P$")
-# one parameter per speed block: a flat trace means its proposals are all rejected
-for ax, name in zip(axes[1:], ("As", "ns", "igm_tau_eff_0", "p1d_f_Lya_SiIII_0")):
-    ax.plot(data[name].to_numpy())
-    ax.set_ylabel(name.replace("_", r"\_"))
-axes[-1].set_xlabel("accepted step")
-plt.tight_layout()
+    fig, axes = plt.subplots(4, 1, figsize=(8, 9), sharex=True)
+    axes[0].plot(data["minuslogpost"].to_numpy())
+    axes[0].set_ylabel(r"$-\log P$")
+    # one parameter per speed block: a flat trace means its proposals are all rejected
+    for ax, name in zip(axes[1:], ("As", "ns", "igm_tau_eff_0", "p1d_f_Lya_SiIII_0")):
+        ax.plot(data[name].to_numpy())
+        ax.set_ylabel(name.replace("_", r"\_"))
+    axes[-1].set_xlabel("accepted step")
+    plt.tight_layout()
 
 # %%
-samples = load_samples(str(TEST_PREFIX), skip=0.3, to_getdist=True)
-labels = {"Delta2star": r"\Delta^2_\star", "nstar": r"n_\star", "alphastar": r"\alpha_\star"}
-for name, label in labels.items():
-    if samples.getParamNames().parWithName(name) is not None:
-        samples.getParamNames().parWithName(name).label = label
+TEST_EXISTS
 
-# getdist drops parameters that never move (e.g. As/ns in a short test whose
-# steps in that block were all rejected), so plot only the ones it kept
-wanted = ["Delta2star", "nstar", "igm_tau_eff_0", "igm_sigT_kms_0"]
-kept = [name for name in wanted if samples.getParamNames().parWithName(name) is not None]
-if set(wanted) - set(kept):
-    print("constant in this chain, not plotted:", sorted(set(wanted) - set(kept)))
-g = plots.get_subplot_plotter(width_inch=8)
-g.triangle_plot(samples, kept, filled=True)
+# %%
+if TEST_EXISTS:
+    samples = load_samples(str(TEST_PREFIX), skip=0.3, to_getdist=True)
+    labels = {"Delta2star": r"\Delta^2_\star", "nstar": r"n_\star", "alphastar": r"\alpha_\star"}
+    for name, label in labels.items():
+        if samples.getParamNames().parWithName(name) is not None:
+            samples.getParamNames().parWithName(name).label = label
+
+    # getdist drops parameters that never move (e.g. As/ns in a short test whose
+    # steps in that block were all rejected), so plot only the ones it kept
+    wanted = ["Delta2star", "nstar", "igm_tau_eff_0", "igm_sigT_kms_0"]
+    kept = [name for name in wanted if samples.getParamNames().parWithName(name) is not None]
+    if set(wanted) - set(kept):
+        print("constant in this chain, not plotted:", sorted(set(wanted) - set(kept)))
+    g = plots.get_subplot_plotter(width_inch=8)
+    g.triangle_plot(samples, kept, filled=True)
 
 # %% [markdown]
 # ## Comparison with emcee (to do)
@@ -436,6 +344,12 @@ g.triangle_plot(samples, kept, filled=True)
 # convert both to getdist `MCSamples` and compare the marginals of the shared
 # public parameters (native names map to public ones through
 # `lya_interface.from_cup1d.public_names`).
+
+# %% [markdown]
+#
+
+# %% [markdown]
+#
 
 # %% [markdown]
 #

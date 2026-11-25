@@ -377,7 +377,9 @@ def plot_point_with_residuals(model, point, ncols=4, title=None):
     Notes
     -----
     The model includes contaminants, resolution and rebinning onto the data
-    bins. Residuals are ``data / model - 1`` with marginal (diagonal) errors
+    bins. Panels are grouped by data set (named in their titles when there are
+    several), then ordered in redshift. Residuals are ``data / model - 1`` with
+    marginal (diagonal) errors
     ``sigma / model``; the per-redshift chi2 uses the same marginal blocks, so
     their sum need not equal the correlated joint chi2 in the title.
     """
@@ -388,27 +390,31 @@ def plot_point_with_residuals(model, point, ncols=4, title=None):
     result, powers = evaluate_point(model, point)
     backend = cup1d_component(model).backend
     entries = []
-    for key, data in backend.data.items():
+    several = len(backend.data) > 1
+    for order, (key, data) in enumerate(backend.data.items()):
         for i, z in enumerate(data.z):
             k = np.asarray(data.k_kms[i])
             pk = np.asarray(data.Pk_kms[i])
             mod = np.asarray(powers[key][i])
             err = np.sqrt(np.diag(backend.cov_Pk_kms[key][i]))
             chi2, _ = gaussian_residual(pk - mod, backend.chol_Pk_kms[key][i])
-            entries.append((float(z), k, pk, mod, err, chi2))
-    entries.sort(key=lambda e: e[0])
+            label = f"{key} " if several else ""
+            entries.append((order, float(z), label, k, pk, mod, err, chi2))
+    # grouped by data set, then by redshift
+    entries.sort(key=lambda e: (e[0], e[1]))
+    entries = [entry[1:] for entry in entries]
     nrows = -(-len(entries) // ncols)
     fig = plt.figure(figsize=(4.2 * ncols, 4.2 * nrows))
     outer = fig.add_gridspec(nrows, ncols, left=0.06, right=0.99, bottom=0.05,
                              top=0.88, wspace=0.28, hspace=0.3)
     spectra = []
-    for n, (z, k, pk, mod, err, chi2) in enumerate(entries):
+    for n, (z, label, k, pk, mod, err, chi2) in enumerate(entries):
         inner = outer[n // ncols, n % ncols].subgridspec(2, 1, height_ratios=(3, 1), hspace=0)
         top = fig.add_subplot(inner[0])
         bottom = fig.add_subplot(inner[1], sharex=top)
         top.errorbar(k, k * pk / np.pi, k * err / np.pi, fmt="o", ms=3, capsize=2, color="C0", label="data")
         top.plot(k, k * mod / np.pi, color="C1", label="model")
-        top.set_title(f"z={z:.1f}  $\\chi^2$={chi2:.1f}/{len(k)}", fontsize=10)
+        top.set_title(f"{label}z={z:.1f}  $\\chi^2$={chi2:.1f}/{len(k)}", fontsize=10)
         top.tick_params(labelbottom=False)
         bottom.errorbar(k, pk / mod - 1, err / mod, fmt="o", ms=3, capsize=2, color="C0")
         bottom.axhline(0, color="C1", lw=1)
