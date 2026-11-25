@@ -10,28 +10,32 @@ The example throughout is `hires_forestflow` (DESI DR1 QMLE3 + Karacayli2022,
 | `prepare_mcmc.py` | Prepares a run folder: best fit (minimized if missing, or with `--force`), Gauss-Newton and proposal covariances, production YAML, best-fit figure. Same code as the notebook (`lya_interface.mcmc_setup`). |
 | `run_mcmc.py` | Runs a Cobaya MCMC from a production YAML: `--test` (short chain), production (MPI, resumes), `--status` (convergence). |
 | `thread_scaling.py` | Times one likelihood call against the number of OpenMP threads, to choose chains x threads per node. |
-| `nersc/prepare_job.sh` | Slurm job running `prepare_mcmc.py` on a shared Perlmutter CPU node. |
+| `nersc/prepare_job.sh` | Slurm job (debug queue) running `prepare_mcmc.py --force` (`REUSE=1`: keep the saved best fit). |
+| `nersc/job_log.sh` | Sourced by both jobs: log header (job, nodes, commits) and copies of the log in `RUN_DIR/logs`. |
 | `nersc/mcmc_job.sh` | Slurm job for Perlmutter CPU nodes that resubmits itself until the run converges. |
 
 ## NERSC in three steps
 
-From the `lya_interface` checkout on Perlmutter, after `git pull` of cup1d,
-lya_interface, ForestFlow and LaCE (first time: section 5 below). Nothing is
-copied from the laptop. Everything goes to
-`$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc/` (`RUN_DIR`).
+From the `lya_interface` checkout on Perlmutter (submit from there: logs go to
+its `logs/` folder), after `git pull` of cup1d, lya_interface, ForestFlow and
+LaCE (first time: section 5 below). Nothing is copied from the laptop.
+Everything goes to `$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc/` (`RUN_DIR`), including a copy of every
+job log in `RUN_DIR/logs/`. Each log starts with the job, date, nodes, run
+folder and the branch and commit of the four repositories.
 
-1. **Best fit, covariance and production YAML** (minimizes only if there is no
-   saved best fit; `FORCE=1` redoes everything, e.g. after changing priors):
+1. **Best fit, covariance and production YAML** (debug queue, a few minutes;
+   redoes the fit, starting from the saved best fit if any):
    ```bash
-   sbatch scripts/nersc/prepare_job.sh                       # or: sbatch --export=ALL,FORCE=1 scripts/nersc/prepare_job.sh
+   sbatch scripts/nersc/prepare_job.sh
    ```
-   Check `prepare_mcmc-<jobid>.out` (chi2, parameters near prior bounds) and
-   `RUN_DIR/best_fit.png`.
+   Check `logs/prepare_mcmc-<jobid>.out` (chi2, parameters near prior bounds)
+   and `RUN_DIR/best_fit.png`. To keep a saved best fit and only rewrite the
+   covariances and the YAML: `sbatch --export=ALL,REUSE=1 scripts/nersc/prepare_job.sh`.
 2. **Test of the sampler** (debug queue, ~15 min, writes `RUN_DIR/test/`):
    ```bash
    sbatch --qos=debug --time=00:30:00 --export=ALL,MODE=test scripts/nersc/mcmc_job.sh
    ```
-   Check `lya_mcmc-<jobid>.out`: acceptance rate, time per step, status report.
+   Check `logs/lya_mcmc-<jobid>.out`: acceptance rate, time per step, status report.
 3. **Production** (resubmits itself until converged):
    ```bash
    sbatch scripts/nersc/mcmc_job.sh

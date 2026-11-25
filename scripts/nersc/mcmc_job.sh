@@ -15,6 +15,9 @@
 #
 #   sbatch scripts/nersc/mcmc_job.sh
 #
+# Submit from the lya_interface checkout: logs go to logs/lya_mcmc-<jobid>.out,
+# with a copy in RUN_DIR/logs (every 10 min and at the end of each job).
+#
 # Test (MODE=test): debug queue, 64 chains of TEST_SAMPLES accepted points in
 # RUN_DIR/test/ (overwritten), with convergence checks every 5d accepted points
 # so the checkpoint and the learned covariance are written; no resubmission.
@@ -34,7 +37,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --ntasks-per-node=64
 #SBATCH --cpus-per-task=4
-#SBATCH --output=%x-%j.out
+#SBATCH --output=logs/%x-%j.out
 
 set -euo pipefail
 
@@ -71,7 +74,8 @@ export COBAYA_USE_FILE_LOCKING=False
 export OMP_PROC_BIND=spread
 PYTHON=$CONDA_PREFIX/bin/python    # the environment's interpreter, by full path
 RUN="$PYTHON $LYA_INTERFACE/scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml"
-echo "mode $MODE, $SLURM_NTASKS chains x $THREADS threads, run folder $RUN_DIR, python $PYTHON"
+source "$LYA_INTERFACE/scripts/nersc/job_log.sh"
+job_header "MCMC $MODE, $SLURM_NTASKS chains x $THREADS threads, job ${JOB_INDEX:-1} of at most $MAX_JOBS"
 
 if [ "$MODE" = "test" ]; then
     srun --cpu-bind=cores $RUN --test --test-samples "$TEST_SAMPLES" --learn-every 5d
