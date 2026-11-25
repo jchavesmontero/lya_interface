@@ -98,6 +98,36 @@ def convert_point_otypes(info, point, saved_otypes):
     return point, converted
 
 
+def clip_to_prior(info, point):
+    """Move values outside the flat priors of the configuration onto the nearest bound.
+
+    Needed when a saved point (best fit, IC) comes from a configuration with
+    other priors, e.g. a negative HCD amplitude saved before the lower bound
+    became zero.
+
+    Returns
+    -------
+    point : dict
+        Copy of ``point`` inside the priors.
+    clipped : dict
+        Public name to ``(saved value, new value)`` of moved entries.
+    """
+    point = dict(point)
+    clipped = {}
+    for public, value in point.items():
+        definition = info.get("params", {}).get(public)
+        if not (isinstance(definition, dict) and isinstance(definition.get("prior"), dict)):
+            continue
+        low, high = definition["prior"].get("min"), definition["prior"].get("max")
+        if low is None or high is None:
+            continue
+        new = float(np.clip(value, low, high))
+        if new != value:
+            point[public] = new
+            clipped[public] = (float(value), new)
+    return point, clipped
+
+
 def _node(args, family, index, public):
     """Return the redshift node of coefficient ``index`` of ``family``."""
     for section in (args.fid_igm, args.fid_cont, args.fid_syst):

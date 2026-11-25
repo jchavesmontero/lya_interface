@@ -220,52 +220,52 @@ params: &id001
     proposal: 0.06
   p1d_HCD_damp1_0:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.97
     ref: 0.09963412088119829
-    proposal: 0.00972
+    proposal: 0.0097
   p1d_HCD_damp1_1:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.97
     ref: 0.11969994264864998
-    proposal: 0.00972
+    proposal: 0.0097
   p1d_HCD_damp2_0:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.37
     ref: 5.63001480316542e-05
-    proposal: 0.00372
+    proposal: 0.0037
   p1d_HCD_damp2_1:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.37
     ref: 0.017554581618136913
-    proposal: 0.00372
+    proposal: 0.0037
   p1d_HCD_damp3_0:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.37
     ref: 0.011840453776436999
-    proposal: 0.00372
+    proposal: 0.0037
   p1d_HCD_damp3_1:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.37
     ref: 0.016428233898001604
-    proposal: 0.00372
+    proposal: 0.0037
   p1d_HCD_damp4_0:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.37
     ref: 0.009370643998803222
-    proposal: 0.00372
+    proposal: 0.0037
   p1d_HCD_damp4_1:
     prior:
-      min: -0.002
+      min: 0.0
       max: 0.37
     ref: 5.0401681364030736e-05
-    proposal: 0.00372
+    proposal: 0.0037
   p1d_R_coeff_0:
     prior:
       min: -0.1

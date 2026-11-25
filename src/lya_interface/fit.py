@@ -405,13 +405,20 @@ class Fit:
                 f"extra {sorted(set(point) - set(fit.reference))}"
             )
         # values saved with another otype (log or linear) than configured now
-        from lya_interface.initial_conditions import convert_point_otypes
+        from lya_interface.initial_conditions import clip_to_prior, convert_point_otypes
         saved_otypes = payload.get("parameter_otypes")
         point, converted = convert_point_otypes(fit.info, point, saved_otypes)
         if converted:
             warnings.warn("Converted saved values to the configured otype: " + ", ".join(
                 f"{name} ({old} -> {new})" for name, (old, new) in converted.items()),
                 stacklevel=2)
+        # values outside priors changed since the fit go to the nearest bound
+        point, clipped = clip_to_prior(fit.info, point)
+        if clipped:
+            warnings.warn("Saved values outside the current priors moved to the bound: " + ", ".join(
+                f"{name} ({old:.6g} -> {new:.6g})" for name, (old, new) in clipped.items()),
+                stacklevel=2)
+            converted = {**converted, **clipped}  # the saved errors no longer apply
         statistics = goodness_of_fit(fit.model, point)
         minus2 = -2 * float(np.sum(fit.model.logposterior(point, return_derived=False).loglikes))
         stored = saved.get("minus2_loglike_total")
@@ -429,11 +436,11 @@ class Fit:
             statistics,
         )
         initial = payload.get("initial_point")
-        fit.initial_point = None if initial is None else convert_point_otypes(
-            fit.info, translate_legacy(initial), saved_otypes)[0]
+        fit.initial_point = None if initial is None else clip_to_prior(fit.info, convert_point_otypes(
+            fit.info, translate_legacy(initial), saved_otypes)[0])[0]
         errors = payload.get("local_errors")
         if errors is not None and converted:
-            warnings.warn("Saved local errors are not restored because the otype of "
+            warnings.warn("Saved local errors are not restored because the otype or prior of "
                           f"{sorted(converted)} changed; re-estimate them.", stacklevel=2)
         elif errors is not None:
             fit.local_errors = LocalErrors(translate_legacy(errors["errors"]),

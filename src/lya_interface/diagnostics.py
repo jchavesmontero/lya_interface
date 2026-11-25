@@ -1,6 +1,6 @@
 """Point diagnostics using the native cup1d likelihood and P1D renderers."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 import time
 import numpy as np
@@ -233,10 +233,15 @@ class GoodnessOfFit:
 
 @dataclass(frozen=True)
 class JointGoodnessOfFit:
-    """Separate P1D, BAO, and combined goodness-of-fit summaries."""
+    """Separate P1D, BAO, and combined goodness-of-fit summaries.
+
+    ``datasets`` holds the chi-square and number of points of each P1D data set
+    (e.g. ``DESIY1_QMLE3`` and ``Karacayli2022``), which add up to ``p1d``.
+    """
     p1d: GoodnessOfFit | None
     bao: GoodnessOfFit | None
     joint: GoodnessOfFit
+    datasets: dict = field(default_factory=dict)
 
 
 def vega_component(model):
@@ -283,9 +288,12 @@ def goodness_of_fit(model, point):
     components = evaluate_components(model, point)
     nfit = len(model.parameterization.sampled_params())
     p1d = None
+    datasets = {}
     try:
         result, _ = evaluate_point(model, point)
         p1d = _gof(result.chi2_data, result.ndata, nfit)
+        datasets = {key: _gof(result.chi2_by_dataset[key], result.ndata_by_dataset[key], 0)
+                    for key in result.chi2_by_dataset}
     except (ValueError, KeyError):
         pass
     vega = vega_component(model)
@@ -296,18 +304,36 @@ def goodness_of_fit(model, point):
         bao = _gof(-2 * components.loglikes[name], ndata, nfit)
     joint_chi2 = sum(x.chi2 for x in (p1d, bao) if x is not None)
     joint_ndata = sum(x.ndata for x in (p1d, bao) if x is not None)
-    return JointGoodnessOfFit(p1d, bao, _gof(joint_chi2, joint_ndata, nfit))
+    return JointGoodnessOfFit(p1d, bao, _gof(joint_chi2, joint_ndata, nfit), datasets)
+
+
+def _extra_minus2loglike(statistics, minus2loglike, tolerance=1e-6):
+    """``; -2logL_total=...`` when it differs from the joint data chi-square, else ``""``.
+
+    They differ when the likelihood includes more than the data chi-square
+    (e.g. a covariance log-determinant or a likelihood without a chi-square split).
+    """
+    if abs(minus2loglike - statistics.joint.chi2) <= tolerance * max(1.0, abs(minus2loglike)):
+        return ""
+    return f"; -2logL_total={minus2loglike:.6g}"
 
 
 def format_goodness_of_fit(statistics, *, multiline=False):
-    """Format separate data-set and combined chi-square/PTE diagnostics."""
-    def one(label, value):
-        return "" if value is None else (
-            f"chi2_{label}={value.chi2:.6g}/{value.dof}, PTE_{label}={value.probability:.4g}"
-        )
-    data_terms = "; ".join(filter(None, (one("P1D", statistics.p1d), one("BAO", statistics.bao))))
-    joint = one("joint", statistics.joint)
-    return data_terms + ("\n" if multiline and data_terms else "; ") + joint
+    """Format the chi-square of each data set and the joint chi-square and PTE.
+
+    ``chi2_<data set>=chi2/N_data`` for every P1D data set (``chi2_P1D`` when
+    the per-data-set split is unavailable) and ``chi2_BAO`` if present, then
+    ``chi2_joint=chi2/dof, PTE_joint=p`` with ``dof = N_data - N_sampled``.
+    """
+    terms = [f"chi2_{label}={value.chi2:.6g}/{value.ndata}"
+             for label, value in getattr(statistics, "datasets", {}).items()]
+    if not terms and statistics.p1d is not None:
+        terms.append(f"chi2_P1D={statistics.p1d.chi2:.6g}/{statistics.p1d.ndata}")
+    if statistics.bao is not None:
+        terms.append(f"chi2_BAO={statistics.bao.chi2:.6g}/{statistics.bao.ndata}")
+    joint = statistics.joint
+    joint_term = f"chi2_joint={joint.chi2:.6g}/{joint.dof}, PTE_joint={joint.probability:.4g}"
+    return ", ".join(terms) + ("\n" if multiline and terms else "; " if terms else "") + joint_term
 
 
 def near_prior_bounds(model, point, fraction=0.02):
@@ -553,8 +579,8 @@ def minimize_point(
         initial_statistics = goodness_of_fit(model, initial_point)
         print(
             f"Nelder-Mead: {len(names)} parameters, budget={max_evals}; "
-            f"initial {format_goodness_of_fit(initial_statistics)}; "
-            f"-2logL_total={2 * best_value:.6g}",
+            f"initial {format_goodness_of_fit(initial_statistics)}"
+            f"{_extra_minus2loglike(initial_statistics, 2 * best_value)}",
             flush=True,
         )
 
@@ -586,13 +612,10 @@ def minimize_point(
             # Report the best point so far, not the current trial; recompute
             # its statistics only when it has changed since the last report.
             if best_report[0] != best_value:
-                best_report[:] = [best_value,
-                                  format_goodness_of_fit(goodness_of_fit(model, physical(best_x)))]
-            print(
-                f"Evaluation {evaluations} ({elapsed:.1f} s): best {best_report[1]}; "
-                f"-2logL_total={2 * best_value:.6g}",
-                flush=True,
-            )
+                statistics = goodness_of_fit(model, physical(best_x))
+                best_report[:] = [best_value, format_goodness_of_fit(statistics)
+                                  + _extra_minus2loglike(statistics, 2 * best_value)]
+            print(f"Evaluation {evaluations} ({elapsed:.1f} s): best {best_report[1]}", flush=True)
             last_report = time.perf_counter()
         return value
 
@@ -629,7 +652,8 @@ def minimize_point(
     if verbose:
         print(
             f"Finished: success={bool(fit.success) and final_valid}, evaluations={fit.nfev}; "
-            f"{format_goodness_of_fit(statistics)}; -2logL_total={2 * best_value:.6g}. {message}",
+            f"{format_goodness_of_fit(statistics)}"
+            f"{_extra_minus2loglike(statistics, 2 * best_value)}. {message}",
             flush=True,
         )
     return PointFit(

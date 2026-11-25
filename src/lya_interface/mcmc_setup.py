@@ -168,7 +168,7 @@ def initial_point(fit, log=print):
     it was generated, so they are a good start when the (git-ignored) IC file
     is not available, e.g. on NERSC.
     """
-    from lya_interface.initial_conditions import global_ic_point
+    from lya_interface.initial_conditions import clip_to_prior, global_ic_point
 
     try:
         point = global_ic_point(fit.info, fit.reference)
@@ -176,6 +176,9 @@ def initial_point(fit, log=print):
     except FileNotFoundError as error:
         log(f"{error}; starting from the YAML references")
         point = dict(fit.reference)
+    point, clipped = clip_to_prior(fit.info, point)
+    if clipped:
+        log(f"moved to the prior bounds: {clipped}")
     return point
 
 

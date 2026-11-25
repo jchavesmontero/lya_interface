@@ -16,6 +16,8 @@ The example throughout is `hires_forestflow` (DESI DR1 QMLE3 + Karacayli2022,
 
 ## NERSC in three steps
 
+Short version, commands only: [`nersc/HOWTO.md`](nersc/HOWTO.md).
+
 From the `lya_interface` checkout on Perlmutter (submit from there: logs go to
 its `logs/` folder), after `git pull` of cup1d, lya_interface, ForestFlow and
 LaCE (first time: section 5 below). Nothing is copied from the laptop.
