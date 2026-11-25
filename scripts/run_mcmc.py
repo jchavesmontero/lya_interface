@@ -39,13 +39,54 @@ def mpi_rank():
     return rank()
 
 
+# Cobaya YAML files rewritten in place at every (re)start or convergence check.
+# On CFS a rewrite shorter than the old file has left the old tail behind
+# (e.g. a last line ".6.2" after "version: 3.6.2"), which breaks the next resume.
+COBAYA_YAML_FILES = ("input.yaml", "updated.yaml", "checkpoint")
+
+
+def load_yaml_tolerant(path):
+    """Load a YAML file, dropping trailing lines left over from an older, longer version.
+
+    Returns
+    -------
+    content, dropped
+        The parsed content of the longest valid beginning of the file, and the
+        dropped trailing lines (empty if the file is valid).
+    """
+    import yaml
+    lines = Path(path).read_text().splitlines(keepends=True)
+    for end in range(len(lines), 0, -1):
+        try:
+            return yaml.safe_load("".join(lines[:end])), lines[end:]
+        except yaml.YAMLError:
+            continue
+    raise ValueError(f"{path}: no valid YAML at its beginning")
+
+
+def repair_cobaya_files(prefix):
+    """Remove trailing leftovers from Cobaya's YAML files of a prefix (keeps a backup)."""
+    from datetime import datetime
+    for suffix in COBAYA_YAML_FILES:
+        path = Path(f"{prefix}.{suffix}")
+        if not path.is_file():
+            continue
+        _, dropped = load_yaml_tolerant(path)
+        if dropped:
+            backup = path.with_name(f"{path.name}.corrupt-{datetime.now():%Y%m%dT%H%M%S}")
+            text = path.read_text()
+            backup.write_text(text)
+            path.write_text(text[:len(text) - len("".join(dropped))])
+            print(f"repaired {path.name}: removed trailing {''.join(dropped)!r} (backup {backup.name})",
+                  flush=True)
+
+
 def read_checkpoint(prefix):
     """Cobaya checkpoint of an output prefix, or None if absent."""
-    import yaml
     path = Path(f"{prefix}.checkpoint")
     if not path.is_file():
         return None
-    return yaml.safe_load(path.read_text())["sampler"]["mcmc"]
+    return load_yaml_tolerant(path)[0]["sampler"]["mcmc"]
 
 
 def count_samples(prefix):
@@ -68,30 +109,47 @@ def acceptance(prefix):
     return accepted, steps
 
 
-def status(prefix):
-    """Print the convergence status of a run and reload it; return the exit code."""
+def status(prefix, detailed=False):
+    """Print the convergence status of a run; return the exit code (0 converged, 1 not, 2 not started).
+
+    Quick by default: the checkpoint and the last line of the progress file,
+    both tiny, so the Slurm job can call it before and after every run. With
+    ``detailed`` it also reads every chain (accepted points per chain, overall
+    acceptance) and reloads them with Cobaya; for long production chains on
+    CFS that takes minutes.
+    """
     checkpoint = read_checkpoint(prefix)
     if checkpoint is None:
-        print(f"{prefix}: no checkpoint (not started)")
+        print(f"{prefix}: no checkpoint (not started)", flush=True)
         return 2
     print(f"{prefix}: converged = {checkpoint.get('converged')}, "
-          f"R-1 (last) = {checkpoint.get('Rminus1_last')}, chains = {checkpoint.get('mpi_size')}")
-    counts = count_samples(prefix)
-    for name, n in counts.items():
-        print(f"  {name}: {n} accepted points")
-    accepted, steps = acceptance(prefix)
-    if steps:
-        print(f"  all chains: {accepted} accepted out of {steps:.0f} steps (acceptance {accepted / steps:.2f})")
+          f"R-1 (last) = {checkpoint.get('Rminus1_last')}, chains = {checkpoint.get('mpi_size')}", flush=True)
+    progress = Path(f"{prefix}.progress")
+    if progress.is_file():
+        rows = [line.split() for line in progress.read_text().splitlines()
+                if line.strip() and not line.startswith("#")]
+        if rows and len(rows[-1]) >= 5:
+            n, timestamp, rate, rminus1, rminus1_cl = rows[-1][:5]
+            print(f"  last check {timestamp}: {float(n):.0f} accepted points (all chains), "
+                  f"acceptance {float(rate):.3f}, R-1 {float(rminus1):.3f}, R-1 (95%) {rminus1_cl}",
+                  flush=True)
     for suffix in ("covmat", "progress", "updated.yaml"):
         path = Path(f"{prefix}.{suffix}")
-        print(f"  {path.name}: {'written' if path.is_file() else 'MISSING'}")
-    try:  # the chains must load as the analysis will load them
-        from cobaya import load_samples
-        samples = load_samples(str(prefix), skip=0, combined=True)
-        physical = [name for name in ("As", "ns", "Delta2star") if name in samples.data.columns]
-        print(f"  reloaded: {len(samples)} points; physical columns present: {physical}")
-    except Exception as error:  # report, do not fail the status check
-        print(f"  reloading failed: {error!r}")
+        print(f"  {path.name}: {'written' if path.is_file() else 'MISSING'}", flush=True)
+    if detailed:
+        for name, n in count_samples(prefix).items():
+            print(f"  {name}: {n} accepted points", flush=True)
+        accepted, steps = acceptance(prefix)
+        if steps:
+            print(f"  all chains: {accepted} accepted out of {steps:.0f} steps "
+                  f"(acceptance {accepted / steps:.2f})", flush=True)
+        try:  # the chains must load as the analysis will load them
+            from cobaya import load_samples
+            samples = load_samples(str(prefix), skip=0, combined=True)
+            physical = [name for name in ("As", "ns", "Delta2star") if name in samples.data.columns]
+            print(f"  reloaded: {len(samples)} points; physical columns present: {physical}", flush=True)
+        except Exception as error:  # report, do not fail the status check
+            print(f"  reloading failed: {error!r}", flush=True)
     return 0 if checkpoint.get("converged") else 1
 
 
@@ -154,6 +212,8 @@ def main():
                         help="test: accepted points per chain between convergence checks "
                              "(Cobaya syntax, 'd' = number of parameters; production default 40d)")
     parser.add_argument("--status", action="store_true", help="print convergence of the production run")
+    parser.add_argument("--detailed", action="store_true",
+                        help="with --status: also read every chain and reload them (slow for long chains)")
     parser.add_argument("--start-scale", type=float, default=0.1,
                         help="each chain starts at a draw from N(best fit, scale^2 * proposal "
                              "covariance); 0 keeps the independent YAML references")
@@ -174,7 +234,7 @@ def main():
     if args.test:
         info["output"] = "test/mcmc"
     if args.status:
-        sys.exit(status(info["output"]))
+        sys.exit(status(info["output"], detailed=args.detailed))
 
     if args.test:
         info["resume"] = False
@@ -185,6 +245,13 @@ def main():
 
     from cobaya.run import run
     rank = mpi_rank()
+    if rank == 0:
+        repair_cobaya_files(info["output"])
+    try:  # the other ranks wait for the repair
+        from mpi4py import MPI
+        MPI.COMM_WORLD.Barrier()
+    except ImportError:
+        pass
     if args.start_scale > 0:
         distance = correlated_start(info, rank, args.start_scale)
         if distance is not None:

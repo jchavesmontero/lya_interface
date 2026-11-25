@@ -21,7 +21,8 @@
 # Test (MODE=test): debug queue, 64 chains of TEST_SAMPLES accepted points in
 # RUN_DIR/test/ (overwritten), with convergence checks every 5d accepted points
 # so the checkpoint and the learned covariance are written; no resubmission.
-# Ends with a status report that reloads the chains.
+# Ends with a detailed status report that reloads the chains. Production
+# jobs use the quick status (checkpoint and progress file only).
 #
 #   sbatch --qos=debug --time=00:30:00 --export=ALL,MODE=test scripts/nersc/mcmc_job.sh
 #
@@ -80,7 +81,7 @@ job_header "MCMC $MODE, $SLURM_NTASKS chains x $THREADS threads, job ${JOB_INDEX
 if [ "$MODE" = "test" ]; then
     srun --cpu-bind=cores $RUN --test --test-samples "$TEST_SAMPLES" --learn-every 5d
     echo; echo "files in $RUN_DIR/test:"; ls -la "$RUN_DIR/test"
-    echo; $RUN --test --status || true   # exit code 1 = not converged, expected for a test
+    echo; $RUN --test --status --detailed || true   # exit code 1 = not converged, expected for a test
     exit 0
 fi
 

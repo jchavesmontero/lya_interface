@@ -45,8 +45,10 @@ def read_chains(prefix, columns_wanted=None):
         with open(file) as handle:
             names = handle.readline().lstrip("#").split()
         usecols = names if columns_wanted is None else [n for n in names if columns_wanted(n)]
+        # the last line may be incomplete while a running job writes it
         frame = pd.read_csv(file, sep=r"\s+", skiprows=1, names=names, usecols=usecols,
-                            dtype={n: np.float32 for n in usecols if n != "weight"})
+                            on_bad_lines="skip").apply(pd.to_numeric, errors="coerce").dropna()
+        frame = frame.astype({n: np.float32 for n in usecols if n != "weight"})
         chains.append((file.name, frame))
     return chains
 
@@ -84,8 +86,19 @@ def main():
     report(f"chains: {prefix}")
 
     # settings and convergence history
-    updated = Path(f"{prefix}.updated.yaml")
-    mcmc = yaml.safe_load(updated.read_text())["sampler"]["mcmc"] if updated.is_file() else {}
+    # settings Cobaya used; if that file cannot be read (e.g. being rewritten by
+    # a resuming job), those of the production YAML
+    mcmc = {}
+    for source in (Path(f"{prefix}.updated.yaml"), run_dir / "cobaya_mcmc.yaml"):
+        if not source.is_file():
+            continue
+        try:
+            mcmc = yaml.safe_load(source.read_text())["sampler"]["mcmc"]
+        except Exception as error:
+            report(f"  could not read {source.name}: {type(error).__name__}; trying the next source")
+            continue
+        report(f"  settings from {source.name}")
+        break
     for key in ("covmat", "learn_proposal", "learn_proposal_Rminus1_max", "proposal_scale",
                 "Rminus1_stop", "Rminus1_cl_stop", "max_samples"):
         report(f"  {key:>28s}: {mcmc.get(key)}")

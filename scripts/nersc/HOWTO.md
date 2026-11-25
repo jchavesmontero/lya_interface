@@ -46,7 +46,8 @@ Follow it:
 ```bash
 squeue --me                                              # running and queued jobs
 tail -f logs/lya_mcmc-<jobid>.out                        # current job
-python scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml --status   # R-1 so far
+python scripts/run_mcmc.py $RUN_DIR/cobaya_mcmc.yaml --status   # R-1 so far (seconds)
+# add --detailed to also count every chain and reload them (minutes for long chains)
 ```
 
 Chains: `$RUN_DIR/chains/`. Copies of all logs: `$RUN_DIR/logs/`.
