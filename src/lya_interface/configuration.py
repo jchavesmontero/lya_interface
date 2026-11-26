@@ -167,6 +167,66 @@ def portable_interface_base(config_path, folder):
         return os.path.relpath(config_path, folder)
 
 
+NATIVE_CONFIG_FILE = "native_config.yaml"
+
+
+def native_config_path(info):
+    """Return the native cup1d YAML shared by the components of a configuration.
+
+    Parameters
+    ----------
+    info : mapping
+        Resolved configuration (:func:`load_configuration`).
+
+    Returns
+    -------
+    str or None
+        The path, or None if no component has one.
+
+    Raises
+    ------
+    ValueError
+        If components use different native configurations.
+    """
+    paths = {options["native_config"] for section in ("theory", "likelihood")
+             for name, options in info.get(section, {}).items()
+             if name.startswith("lya_interface.") and isinstance(options, dict) and options.get("native_config")}
+    if len(paths) > 1:
+        raise ValueError(f"components use different native configurations: {sorted(paths)}")
+    return next(iter(paths), None)
+
+
+def freeze_native_config(info, folder, note=""):
+    """Write the complete resolved native cup1d settings of a configuration to a folder.
+
+    Parameters
+    ----------
+    info : mapping
+        Resolved configuration (:func:`load_configuration`).
+    folder : path-like
+        Destination, e.g. a chain folder.
+    note : str, default=""
+        Comment written at the top of the file.
+
+    Returns
+    -------
+    pathlib.Path or None
+        ``<folder>/native_config.yaml``: every cup1d setting (CM2026 defaults
+        merged with the native YAML), so the run no longer depends on the
+        native YAML or the defaults of the cup1d checkout. It sets the
+        fiducial cosmology, hence ``H(z)/(1+z)``. None without a native
+        configuration.
+    """
+    from cup1d import Args
+
+    source = native_config_path(info)
+    if source is None:
+        return None
+    args = Args.from_yaml(source, verbose=False)
+    return args.write_yaml(Path(folder) / NATIVE_CONFIG_FILE,
+                           header=f"Resolved cup1d settings frozen from {source}\n" + note)
+
+
 def load_configuration(path):
     """Load an interface YAML file and resolve inherited configuration.
 
@@ -202,6 +262,9 @@ def load_configuration(path):
     a chain from a best fit. ``sample_in_unit_cube: true`` makes Cobaya sample
     every flat-prior parameter in [0, 1] (``<name>_cube``) and compute the
     physical one from it, as native cup1d; given references stay physical.
+    ``native_config`` (a path relative to this file or absolute) replaces the
+    native cup1d YAML of every component, e.g. the copy frozen with a chain
+    (:func:`freeze_native_config`).
     """
     path = Path(path).resolve()
     info = yaml_load_file(str(path))
@@ -230,6 +293,14 @@ def load_configuration(path):
     references = info.pop("reference_point", {})
     if references:
         _set_references(info, references)
+    native = info.pop("native_config", None)
+    if native is not None:
+        native = Path(native)
+        native = str((native if native.is_absolute() else path.parent / native).resolve())
+        for section in ("theory", "likelihood"):
+            for name, options in info.get(section, {}).items():
+                if name.startswith("lya_interface.") and isinstance(options, dict) and "native_config" in options:
+                    options["native_config"] = native
     unit_cube = info.pop("sample_in_unit_cube", False)
     structured = info.pop("parameters", None)
     interface_mapping = None

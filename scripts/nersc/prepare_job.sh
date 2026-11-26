@@ -27,9 +27,9 @@ set -euo pipefail
 # ---------------------------------------------------------------- edit these
 THREADS=1                          # OpenMP threads: thread_scaling.py found no gain from more
 LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
-CONFIG=$LYA_INTERFACE/examples/hires_forestflow_evaluate.yaml
+CONFIG=${CONFIG:-$LYA_INTERFACE/examples/hires_forestflow_evaluate.yaml}   # or sbatch --export=ALL,CONFIG=...
 # run folder, the same as in mcmc_job.sh
-RUN_DIR=$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc
+RUN_DIR=${RUN_DIR:-$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc}   # or --export=ALL,RUN_DIR=...
 CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin
 CONDA_ENV=lace                     # environment with the IGMHub packages
 # ---------------------------------------------------------------------------

@@ -44,3 +44,36 @@ def test_covariance_round_trip_and_conditioning():
 def test_non_flat_prior_is_rejected():
     with pytest.raises(ValueError, match="flat prior"):
         unit_cube_params({"x": {"prior": {"dist": "norm", "loc": 0, "scale": 1}}})
+
+
+def test_prior_bounds_are_stored_and_read_from_the_run(tmp_path):
+    """A run's unit cube is read from its own folder, never the current configuration."""
+    import yaml
+    from lya_interface.unit_cube import (bounds_from_unit_cube_params, flat_prior_bounds,
+                                         read_prior_bounds, write_prior_bounds)
+
+    bounds = flat_prior_bounds(PARAMS)
+    assert set(bounds) == {"As", "igm_tau_eff_0"}
+    # the lambdas Cobaya records (e.g. in <prefix>.updated.yaml) give the same bounds
+    same = lambda x, y: set(x) == set(y) and all(np.allclose(x[k], y[k], rtol=1e-12) for k in x)
+    assert same(bounds_from_unit_cube_params(unit_cube_params(PARAMS)), bounds)
+    with pytest.raises(FileNotFoundError):
+        read_prior_bounds(tmp_path)
+    (tmp_path / "mcmc.updated.yaml").write_text(yaml.safe_dump({"params": unit_cube_params(PARAMS)}))
+    assert same(read_prior_bounds(tmp_path), bounds)
+    written = {"As": [0.5e-9, 4e-9], "igm_tau_eff_0": [-0.2, 0.2]}
+    write_prior_bounds(tmp_path, written)
+    assert read_prior_bounds(tmp_path) == written  # prior_bounds.yaml takes precedence
+
+
+def test_covariance_moves_between_unit_cubes_of_different_priors():
+    """A covariance learned with one prior is rescaled, not reused, in another unit cube."""
+    old = {"a": [-1.0, 3.0], "b": [0.1, 0.2]}
+    new = {"a": [-2.0, 6.0], "b": [0.1, 0.2]}
+    physical = np.array([[0.04, 0.001], [0.001, 1e-4]])
+    cube, names = covariance_to_unit_cube(physical, ["a", "b"], old)
+    back, back_names = covariance_from_unit_cube(cube, names, old)
+    moved, _ = covariance_to_unit_cube(back, back_names, new)
+    assert np.allclose(back, physical)
+    assert moved[0, 0] == pytest.approx(cube[0, 0] / 4)
+    assert moved[1, 1] == pytest.approx(cube[1, 1])

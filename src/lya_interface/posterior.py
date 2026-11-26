@@ -96,9 +96,46 @@ def run_configuration(prefix):
     return load_configuration(path), path
 
 
-def _component(info, section, suffix):
-    """Options of the first lya_interface component whose class name ends with ``suffix``."""
-    return next(options for name, options in info.get(section, {}).items() if name.endswith(suffix))
+def run_native_config(prefix, log=print):
+    """Return the native cup1d YAML a chain was run with.
+
+    Parameters
+    ----------
+    prefix : path-like
+        Chain prefix.
+    log : callable, default=print
+
+    Returns
+    -------
+    path : str
+        The chain's frozen ``native_config.yaml``, or, for chains started
+        before it was written, the native YAML recorded by Cobaya in
+        ``<prefix>.updated.yaml`` (a file of the checkout, which may have
+        changed since: a warning is logged).
+
+    Raises
+    ------
+    FileNotFoundError
+        If the chain records neither.
+    """
+    from lya_interface.configuration import NATIVE_CONFIG_FILE, native_config_path
+
+    prefix = Path(prefix)
+    frozen = prefix.parent / NATIVE_CONFIG_FILE
+    if frozen.is_file():
+        return str(frozen)
+    updated = prefix.parent / f"{prefix.name}.updated.yaml"
+    path = native_config_path(yaml.safe_load(updated.read_text())) if updated.is_file() else None
+    if path is None:
+        raise FileNotFoundError(f"no {NATIVE_CONFIG_FILE} nor {updated.name} with a native_config "
+                                f"in {prefix.parent}")
+    if not Path(path).is_file() and "/cup1d/" in path:
+        # recorded on another machine (e.g. NERSC): same file of this cup1d checkout
+        from cup1d.utils.utils import get_path_repo
+        path = str(Path(get_path_repo("cup1d")) / path.rsplit("/cup1d/", 1)[1])
+    log(f"warning: {prefix.parent.name} has no frozen {NATIVE_CONFIG_FILE}; using {path} from the "
+        "checkout, as recorded by Cobaya (it may have changed since the chain started)")
+    return path
 
 
 @dataclass
@@ -112,9 +149,9 @@ class RunContext:
     config_path : pathlib.Path
         Interface YAML of ``info``.
     native_config : str
-        Native cup1d YAML.
-    fiducial_M : dict
-        ``H(z)/(1+z)`` [km/s/Mpc] at every data redshift.
+        Native cup1d YAML of the run (:func:`run_native_config`).
+    fid_cosmo_label : str
+        Fiducial cosmology of that configuration.
     blinding : dict
         Native star-parameter offsets included in the chain values.
     best_chain_point : dict
@@ -127,16 +164,38 @@ class RunContext:
     info: dict
     config_path: Path
     native_config: str
-    fiducial_M: dict
+    fid_cosmo_label: str
     blinding: dict = field(default_factory=dict)
     best_chain_point: dict = field(default_factory=dict)
     best_chain_minuslogpost: float = np.inf
     n_rows: int = 0
+    _cosmology: object = field(default=None, repr=False)
 
     def M_of_z(self, z):
-        """Fiducial ``H(z)/(1+z)``, linearly interpolated between data redshifts."""
-        zs = np.array(sorted(map(float, self.fiducial_M)))
-        return float(np.interp(z, zs, [self.fiducial_M[key] for key in sorted(self.fiducial_M, key=float)]))
+        """``H(z)/(1+z)`` [km/s/Mpc] of the run's fiducial cosmology."""
+        if self._cosmology is None:
+            from lace.cosmo.cosmology import Cosmology
+            self._cosmology = Cosmology(cosmo_label=self.fid_cosmo_label)
+        return float(np.atleast_1d(self._cosmology.get_dkms_dMpc(np.atleast_1d(float(z))))[0])
+
+    def physical_config(self, folder):
+        """Write an interface YAML with the run's native config; return its path.
+
+        Parameters
+        ----------
+        folder : path-like
+            Where to write ``run_config.yaml`` (an overlay of
+            :attr:`config_path`), e.g. to build the model with :class:`Fit`.
+
+        Returns
+        -------
+        pathlib.Path
+        """
+        path = Path(folder) / "run_config.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump({"interface_base": str(Path(self.config_path).resolve()),
+                                        "native_config": str(Path(self.native_config).resolve())}))
+        return path
 
 
 def _sampled_bounds(info):
@@ -250,21 +309,38 @@ def load_posterior(prefix, burn=0.3, max_rows=1_000_000, unblind=False, label=""
     -------
     samples : cup1d.postprocessing.posterior.PosteriorSamples
         Physical sampled parameters and ``Delta2_star``, ``n_star`` (if
-        derived in the chains), in native cup1d names.
+        derived in the chains), in native cup1d names, with the prior bounds
+        recorded by the run (:func:`lya_interface.unit_cube.read_prior_bounds`).
     context : RunContext
-        Configuration, native config, fiducial conversions, blinding and the
-        best chain sample.
+        Configuration, the run's native config and fiducial cosmology,
+        blinding and the best chain sample.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the chain folder records no prior bounds.
     """
     from cup1d.postprocessing.posterior import PosteriorSamples
     from lya_interface.adapters.cup1d_backend import native_blinding
 
+    from lya_interface.unit_cube import read_prior_bounds
+
+    prefix = Path(prefix)
     info, config_path = run_configuration(prefix)
-    bounds = _sampled_bounds(info)
+    # the run's own priors (prior_bounds.yaml or Cobaya's record), never the
+    # current configuration, whose priors may have changed since
+    bounds = read_prior_bounds(prefix.parent, prefix.name)
+    current = _sampled_bounds(info)
+    changed = sorted(n for n in bounds if n in current and not np.allclose(bounds[n], current[n]))
+    if changed:
+        log(f"priors changed since this run (the run's are used): {changed}")
     sampled = list(bounds)
     derived = [name for name in ("Delta2star", "nstar") if name in info["params"]]
     values, weights, minuslogpost, best, n_rows = read_chains(prefix, sampled + derived, burn, max_rows, log)
-    native_config = _component(info, "theory", "ForestFlowTheory")["native_config"]
-    fiducial_M = {float(z): float(m) for z, m in _component(info, "likelihood", "Cup1DLikelihood")["fiducial_M"].items()}
+    from cup1d import Args
+
+    native_config = run_native_config(prefix, log)
+    fid_cosmo_label = Args.from_yaml(native_config, verbose=False).fid_cosmo_label
     blinding = {key: float(value) for key, value in native_blinding(native_config).items()}
     blinded = any(blinding.get(key, 0.0) for key in ("Delta2_star", "n_star"))
     names = [native_parameter_name(name) for name in sampled + derived]
@@ -278,7 +354,7 @@ def load_posterior(prefix, burn=0.3, max_rows=1_000_000, unblind=False, label=""
         minuslogpost=minuslogpost, sampled=[native_parameter_name(n) for n in sampled],
         label=label, blinded=blinded and not unblind,
     )
-    context = RunContext(info, config_path, native_config, fiducial_M, blinding,
+    context = RunContext(info, config_path, native_config, fid_cosmo_label, blinding,
                          {name: best[name] for name in sampled}, best["minuslogpost"], n_rows)
     return samples, context
 
@@ -346,6 +422,24 @@ def data_k_range(args, z=3.0):
     if not ks:
         raise ValueError(f"no data at z={z}")
     return float(min(k.min() for k in ks)), float(max(k.max() for k in ks))
+
+
+def data_redshift_range(args):
+    """Smallest and largest data redshift over every data set.
+
+    Parameters
+    ----------
+    args : cup1d.Args
+        Resolved native settings.
+
+    Returns
+    -------
+    tuple of float
+    """
+    from cup1d.p1ds.factory import set_p1d
+
+    zs = np.concatenate([np.asarray(set_p1d(args, label).z, dtype=float) for label in args.data_label])
+    return float(zs.min()), float(zs.max())
 
 
 def best_fit_entries(model, point):

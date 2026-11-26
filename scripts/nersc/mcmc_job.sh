@@ -46,7 +46,7 @@ set -euo pipefail
 THREADS=1                          # OpenMP threads per chain
 LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
 # holds cobaya_mcmc.yaml, in the data folder
-RUN_DIR=$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc
+RUN_DIR=${RUN_DIR:-$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc}   # or --export=ALL,RUN_DIR=...
 MAX_JOBS=${MAX_JOBS:-3}            # jobs in the self-resubmitting chain (mcmc_job_test.sh: 1)
 TEST_SAMPLES=1000                  # accepted points per chain in MODE=test (~10 min)
 CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin

@@ -10,6 +10,8 @@ same run folder:
     Regularized covariance from those errors, physical units.
 ``proposal_covmat.txt``
     Covariance given to the sampler, unit-cube units (``<name>_cube``).
+``prior_bounds.yaml``
+    Prior bounds of that unit cube (:func:`lya_interface.unit_cube.read_prior_bounds`).
 ``cobaya_mcmc.yaml``
     Production YAML run by ``scripts/run_mcmc.py`` (test and production).
 ``best_fit.png``
@@ -247,7 +249,8 @@ def write_proposal_covmat(fit, paths, covmat_from=None, force=False,
         Proposal covariance in physical units and its parameter names, or
         ``(None, [])`` when the sampler will use the YAML proposal widths.
     """
-    from lya_interface.unit_cube import covariance_from_unit_cube, covariance_to_unit_cube
+    from lya_interface.unit_cube import (CUBE_SUFFIX, covariance_from_unit_cube, covariance_to_unit_cube,
+                                         flat_prior_bounds, read_prior_bounds, write_prior_bounds)
 
     params = fit.info["params"]
     if fit.local_errors is not None:
@@ -264,13 +267,24 @@ def write_proposal_covmat(fit, paths, covmat_from=None, force=False,
     for source in sources:
         if source is None or not Path(source).is_file():
             continue
-        # physical units, whether the file was learned in the unit cube or not
-        covariance, cov_names = covariance_from_unit_cube(*read_covmat(source), params)
+        # physical units, whether the file was learned in the unit cube or not; a
+        # unit-cube covariance is converted with the priors of its own run
+        covariance, cov_names = read_covmat(source)
+        if any(name.endswith(CUBE_SUFFIX) for name in cov_names):
+            source_path = Path(source)
+            try:
+                source_bounds = read_prior_bounds(source_path.parent, prefix=source_path.stem)
+            except FileNotFoundError as error:
+                log(f"skipping {source}: {error}")
+                continue
+            covariance, cov_names = covariance_from_unit_cube(covariance, cov_names, source_bounds)
         problems = covmat_problems(covariance, cov_names, params, max_fraction)
         if problems:
             log(f"skipping {source}: sigma / prior range too large for {problems}")
             continue
         write_covmat(paths.proposal_covmat, *covariance_to_unit_cube(covariance, cov_names, params))
+        write_prior_bounds(paths.folder, flat_prior_bounds(params),
+                           note=f"of {paths.proposal_covmat.name}, written by lya_interface.mcmc_setup")
         log(f"proposal covariance from {source}")
         missing = sorted(set(fit.reference) - set(cov_names))
         if missing:

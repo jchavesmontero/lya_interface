@@ -57,7 +57,8 @@ def main():
     matplotlib.use("Agg")
     import lya_interface.plotting  # noqa: F401  (house style)
     from cup1d.postprocessing.posterior import PosteriorPlotter
-    from lya_interface.posterior import (chain_prefix, data_k_range, load_posterior, native_models)
+    from lya_interface.posterior import (chain_prefix, data_k_range, data_redshift_range, load_posterior,
+                                         native_models)
 
     run_dir, prefix = chain_prefix(args.run_dir, args.prefix)
     out = Path(args.out) if args.out else run_dir / "plots" / prefix.parent.name
@@ -72,15 +73,15 @@ def main():
         k_range = data_k_range(native, 3.0)
     except ValueError:
         k_range = (1e-3, float(getattr(native, "kmax_ikms", None) or 0.04))
-    zs = sorted(context.fiducial_M)
+    z_range = data_redshift_range(native)
 
     plotter = PosteriorPlotter(samples, out, igm=igm, contaminants=contaminants, syst_znodes=syst_znodes,
-                               z_range=(zs[0], zs[-1]), k_range=k_range, M_of_z=context.M_of_z,
+                               z_range=z_range, k_range=k_range, M_of_z=context.M_of_z,
                                n_model_samples=args.model_samples)
     wanted = set(args.only) if args.only else None
     if not args.no_best_fit and (wanted is None or "best_fit" in wanted):
         try:  # the other figures do not need it
-            plotter.best_fit = best_fit_figure(plotter, run_dir, context, prefix)
+            plotter.best_fit = best_fit_figure(plotter, run_dir, context, prefix, out)
         except Exception:
             print(f"best fit failed:\n{traceback.format_exc()}", flush=True)
     skip = () if wanted is None else tuple(n for n in plotter.FIGURES if n not in wanted)
@@ -88,24 +89,26 @@ def main():
     write_summary(samples, context, out / "summary.txt")
 
 
-def best_fit_figure(plotter, run_dir, context, prefix):
+def best_fit_figure(plotter, run_dir, context, prefix, out):
     """Plot the best-fitting P1D and return the best point in native names.
 
     The best of the saved minimization (``run_dir/best_fit.npy``, if any) and
-    of the chain sample with the lowest minus log posterior.
+    of the chain sample with the lowest minus log posterior. The model uses
+    the run's native cup1d configuration (frozen with the chain).
     """
     from lya_interface.diagnostics import format_goodness_of_fit
     from lya_interface.fit import Fit
     from lya_interface.posterior import best_fit_entries, best_point, native_parameter_name
 
     saved = run_dir / "best_fit.npy"
+    config = context.physical_config(out)
     print(f"building the model for the best fit (OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS')})",
           flush=True)
     if saved.is_file():
-        fit = Fit.from_results(saved, config_path=context.config_path)
+        fit = Fit.from_results(saved, config_path=config)
         candidates = {"minimizer": fit.best_fit.point}
     else:
-        fit = Fit(context.config_path)
+        fit = Fit(config)
         candidates = {}
     candidates["chain"] = context.best_chain_point
     try:

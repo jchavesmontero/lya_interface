@@ -107,6 +107,12 @@ P1D builds the emulator (a few minutes, a few GB); on a busy login node add
 - Only want new covariances or YAML from the saved best fit:
   `sbatch --export=ALL,REUSE=1 scripts/nersc/prepare_job.sh` (affects new
   chains only).
+- Priors: every unit-cube product records its prior bounds, `prior_bounds.yaml`
+  in the run folder (for `proposal_covmat.txt`) and in every `chain_<n>`
+  (chains started before it have them in Cobaya's `mcmc.updated.yaml`). Plots,
+  covariances and new chains use those, never the current configuration's. A
+  run folder prepared before this has none: `NEW_CHAIN=1` stops until it is
+  prepared again (`REUSE=1` above).
 - A production job stopped (time limit, node failure): `sbatch scripts/nersc/mcmc_job.sh`
   again; it resumes the latest chain from its checkpoint (`--export=ALL,CHAIN=<n>`
   for another one).

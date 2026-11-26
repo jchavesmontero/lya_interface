@@ -313,31 +313,68 @@ def new_chain(production_yaml):
     """Create the next ``chain_<n>`` next to a production YAML and freeze its inputs there.
 
     The folder gets a copy of the production YAML, with its output set to
-    ``mcmc`` inside the folder, and of the proposal covariance it names. Runs
+    ``mcmc`` inside the folder, of the proposal covariance it names,
+    ``prior_bounds.yaml`` with the prior bounds of the chain's unit cube, and
+    ``native_config.yaml`` with the complete resolved native cup1d settings
+    (which the chain's YAML then uses instead of the checkout's). Runs
     and resumes use that copy, so rewriting the run folder's YAML or covariance
     (e.g. a new prepare job) never changes an existing chain, and a new chain
     never writes into an old one.
+
+    The proposal covariance is in the unit cube of the run folder's
+    ``prior_bounds.yaml``; if the priors changed since, it is converted to the
+    chain's unit cube.
 
     Returns
     -------
     pathlib.Path
         The new chain's production YAML.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the proposal covariance is in unit-cube units but the run folder
+        does not record its prior bounds (prepare the run again, e.g.
+        ``REUSE=1`` in the Slurm job).
     """
-    import shutil
     import yaml
+    from lya_interface.configuration import NATIVE_CONFIG_FILE, freeze_native_config, load_configuration
+    from lya_interface.mcmc_setup import read_covmat, write_covmat
+    from lya_interface.unit_cube import (CUBE_SUFFIX, bounds_from_unit_cube_params, covariance_from_unit_cube,
+                                         covariance_to_unit_cube, read_prior_bounds, write_prior_bounds)
 
     production_yaml = Path(production_yaml).resolve()
     run_dir = production_yaml.parent
     existing = chain_folders(run_dir)
     number = int(existing[-1].name[len(CHAIN_PREFIX):]) + 1 if existing else 1
     folder = run_dir / f"{CHAIN_PREFIX}{number}"
-    folder.mkdir()  # fails if it exists: never reuse a chain folder
     info = yaml.safe_load(production_yaml.read_text())
     info["output"] = "mcmc"
+    # the bounds the chain samples with: those of the resolved configuration, now
+    resolved = load_configuration(production_yaml)
+    bounds = bounds_from_unit_cube_params(resolved["params"])
     covmat = info.get("sampler", {}).get("mcmc", {}).get("covmat")
+    proposal = None
     if covmat:
-        shutil.copy2(run_dir / covmat, folder / Path(covmat).name)
+        covariance, names = read_covmat(run_dir / covmat)
+        if any(name.endswith(CUBE_SUFFIX) for name in names):
+            source = read_prior_bounds(run_dir)  # raises if the run folder does not record them
+            changed = sorted(n for n in names if n.endswith(CUBE_SUFFIX)
+                             and source.get(n[:-len(CUBE_SUFFIX)]) != bounds.get(n[:-len(CUBE_SUFFIX)]))
+            if changed:
+                print(f"priors changed since {covmat} was written, converted to the new unit cube: {changed}")
+                physical, physical_names = covariance_from_unit_cube(covariance, names, source)
+                covariance, names = covariance_to_unit_cube(physical, physical_names, bounds)
+        proposal = (covariance, names)
+    folder.mkdir()  # fails if it exists: never reuse a chain folder
+    if proposal is not None:
+        write_covmat(folder / Path(covmat).name, *proposal)
         info["sampler"]["mcmc"]["covmat"] = Path(covmat).name
+    if bounds:
+        write_prior_bounds(folder, bounds, note=f"of chain {number} (mcmc.*.txt, mcmc.covmat, {covmat})")
+    # complete native cup1d settings (and so the fiducial cosmology), frozen
+    if freeze_native_config(resolved, folder, note=f"for chain {number}") is not None:
+        info["native_config"] = NATIVE_CONFIG_FILE
     (folder / production_yaml.name).write_text(
         f"# Chain {number}: frozen copy of {production_yaml.name} (and its proposal covariance)\n"
         "# made when the chain was created; the run and its resumes read this file.\n"
