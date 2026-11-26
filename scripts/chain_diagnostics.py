@@ -76,6 +76,10 @@ def main():
     import yaml
 
     run_dir = Path(args.run_dir).expanduser().resolve()
+    if args.prefix is None and run_dir.name[6:].isdigit() and run_dir.name.startswith("chain_"):
+        # given a chain folder itself: use it, with the run folder above it
+        args.prefix = f"{run_dir.name}/mcmc"
+        run_dir = run_dir.parent
     if args.prefix is None:
         chains = sorted((f for f in run_dir.glob("chain_*") if f.name[6:].isdigit()),
                         key=lambda f: int(f.name[6:]))

@@ -83,6 +83,22 @@ To look at the figures on the laptop, copy only that folder (small):
 rsync -av jjchaves@perlmutter.nersc.gov:<RUN_DIR>/diagnostics <local RUN_DIR>/
 ```
 
+Results figures of the latest chain so far (cup1d's posterior figures;
+`$RUN_DIR/plots/chain_<n>/`): best-fit P1D (DESI DR1 above, high resolution
+below), Delta2_star-n_star posterior and against SDSS/BOSS/eBOSS and DESI DR1,
+every parameter group against Delta2_star and n_star, IGM histories against
+DESI DR1 and the literature, metal and HCD contamination at z=3, resolution
+against z, correlation matrix, and `summary.txt` with the percentiles:
+
+```bash
+python scripts/chain_plots.py $RUN_DIR --unblind     # --prefix chain_<n>/mcmc, --only igm_histories hcd ...
+```
+
+`--unblind` removes the DESI blinding offsets of Delta2_star and n_star (DR1 is
+unblinded); without it the literature comparison is skipped. The best-fit
+P1D builds the emulator (a few minutes, a few GB); on a busy login node add
+`--no-best-fit`, or run it in an interactive node (`salloc -q interactive -C cpu -N 1 -t 30`).
+
 ## If something changed
 
 - Code, priors or configuration changed: start again from step 1 (redoes the
