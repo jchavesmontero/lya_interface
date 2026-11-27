@@ -352,32 +352,20 @@ def near_prior_bounds(model, point, fraction=0.02):
     Returns
     -------
     list of dict
-        One entry per parameter and bound: ``name``, ``value``, ``side``
-        (``'lower'``/``'upper'``), ``bound``, ``distance`` (fraction of the range)
-        and ``prior`` (Cobaya distribution name), closest first.
+        As :func:`cup1d.likelihood.parameter.near_prior_bounds` (the shared
+        implementation), with ``prior`` the Cobaya distribution name.
     """
-    rows = []
+    from cup1d.likelihood.parameter import near_prior_bounds as native
     names = list(model.parameterization.sampled_params())
-    for name, (low, high), pdf in zip(names, model.prior.bounds(), model.prior.pdf):
-        if not (np.isfinite(low) and np.isfinite(high)):
-            continue
-        value = float(point[name])
-        for side, bound in (("lower", low), ("upper", high)):
-            distance = abs(value - bound) / (high - low)
-            if distance <= fraction:
-                rows.append(dict(name=name, value=value, side=side, bound=float(bound),
-                                 distance=float(distance), prior=pdf.dist.name))
-    return sorted(rows, key=lambda row: row["distance"])
+    bounds = dict(zip(names, model.prior.bounds()))
+    priors = {name: pdf.dist.name for name, pdf in zip(names, model.prior.pdf)}
+    return native({name: point[name] for name in names}, bounds, fraction=fraction, priors=priors)
 
 
 def format_near_prior_bounds(rows, fraction=0.02):
     """Format :func:`near_prior_bounds` output, one parameter per line."""
-    if not rows:
-        return f"No sampled parameter within {fraction:.0%} of the prior range from a bound."
-    lines = [f"Sampled parameters within {fraction:.0%} of the prior range from a bound:"]
-    lines += [f"  {r['name']:24s} {r['value']: .6g}  ({r['side']} {r['prior']} bound {r['bound']:.6g}, "
-              f"{r['distance']:.2%} of the range)" for r in rows]
-    return "\n".join(lines)
+    from cup1d.likelihood.parameter import format_near_prior_bounds as native
+    return native(rows, fraction)
 
 
 def plot_point_with_residuals(model, point, ncols=4, title=None):
@@ -473,7 +461,7 @@ def minimize_point(
     stall_chi2=0.1,
 ):
     """
-    Run a bounded, total-likelihood Nelder-Mead fit in the unit cube.
+    Run a bounded Nelder-Mead fit of the posterior in the unit cube.
 
     Parameters
     ----------
@@ -493,12 +481,12 @@ def minimize_point(
         Number of optimizer evaluations between progress reports.
 
     stall_evals : int or None, default=200
-        Stop when the best ``-2 log L_total`` has not improved by more than
+        Stop when the best ``-2 log posterior`` has not improved by more than
         ``stall_chi2`` during this many consecutive evaluations. ``None``
         disables the criterion. A stall stop counts as success, like cup1d's
         no-further-improvement stop.
     stall_chi2 : float, default=0.1
-        Improvement in ``-2 log L_total`` that resets the stall counter.
+        Improvement in ``-2 log posterior`` that resets the stall counter.
 
     Returns
     -------
@@ -519,8 +507,11 @@ def minimize_point(
     only the numerical search box: they never replace or truncate the Cobaya
     posterior priors. Scientific-domain exclusions remain infinite objective
     values. A failed/budget-limited run is not called a best fit.
-    All configured likelihood terms enter the objective (including optional
-    BAO); ``chi2_data`` remains the P1D diagnostic when present and is ``NaN``
+    The objective is minus the log posterior (every configured likelihood,
+    including optional BAO, plus the Cobaya priors), as cup1d's minimizer:
+    with Gaussian priors the best fit is the posterior mode, the point a
+    joint minimization of several likelihoods must also find. Flat priors
+    only add a constant. ``chi2_data`` remains the P1D diagnostic when present and is ``NaN``
     in Vega-only mode, while ``minus2_loglike_total`` reports the combined
     objective. Nothing is written to disk. Multiple starts/convergence checks remain the
     responsibility of the analysis, as for native minimization.
@@ -573,35 +564,38 @@ def minimize_point(
         return dict(zip(names, lower + np.asarray(x) * width))
 
     best_x = start.copy()
-    best_value = -float(np.sum(model.logposterior(initial_point, return_derived=False).loglikes))
+    initial_posterior = model.logposterior(initial_point, return_derived=False)
+    best_value = -float(initial_posterior.logpost)  # objective: -log posterior
+    best_m2loglike = -2 * float(np.sum(initial_posterior.loglikes))  # reported
     evaluations = 0
     if verbose:
         initial_statistics = goodness_of_fit(model, initial_point)
         print(
             f"Nelder-Mead: {len(names)} parameters, budget={max_evals}; "
             f"initial {format_goodness_of_fit(initial_statistics)}"
-            f"{_extra_minus2loglike(initial_statistics, 2 * best_value)}",
+            f"{_extra_minus2loglike(initial_statistics, best_m2loglike)}",
             flush=True,
         )
 
     last_report = time.perf_counter()
     best_report = [None, ""]  # best value and its formatted statistics
-    stall_reference = [2 * best_value, 0]  # best -2logL at last reset, evaluation count
+    stall_reference = [2 * best_value, 0]  # best -2 log posterior at last reset, evaluation count
 
     class _Stalled(Exception):
         pass
 
     def objective(x, count=True):
-        nonlocal best_x, best_value, evaluations, last_report
+        nonlocal best_x, best_value, best_m2loglike, evaluations, last_report
         if count:
             evaluations += 1
-        value = np.inf
+        value, m2loglike = np.inf, np.inf
         if np.all(np.isfinite(x)) and np.all(x >= 0) and np.all(x <= 1):
             posterior = model.logposterior(physical(x), return_derived=False)
             if np.isfinite(posterior.logpost):
-                value = -float(np.sum(posterior.loglikes))
+                value = -float(posterior.logpost)
+                m2loglike = -2 * float(np.sum(posterior.loglikes))
         if np.isfinite(value) and value < best_value:
-            best_x, best_value = np.array(x, copy=True), value
+            best_x, best_value, best_m2loglike = np.array(x, copy=True), value, m2loglike
         if count and stall_evals is not None:
             if stall_reference[0] - 2 * best_value > stall_chi2:
                 stall_reference[:] = [2 * best_value, evaluations]
@@ -614,7 +608,7 @@ def minimize_point(
             if best_report[0] != best_value:
                 statistics = goodness_of_fit(model, physical(best_x))
                 best_report[:] = [best_value, format_goodness_of_fit(statistics)
-                                  + _extra_minus2loglike(statistics, 2 * best_value)]
+                                  + _extra_minus2loglike(statistics, best_m2loglike)]
             print(f"Evaluation {evaluations} ({elapsed:.1f} s): best {best_report[1]}", flush=True)
             last_report = time.perf_counter()
         return value
@@ -639,7 +633,7 @@ def minimize_point(
     except _Stalled:
         fit = SimpleNamespace(
             x=best_x, success=True, nfev=evaluations,
-            message=f"Stopped: -2logL_total improved by less than {stall_chi2} "
+            message=f"Stopped: -2 log posterior improved by less than {stall_chi2} "
                     f"in {stall_evals} evaluations.",
         )
     final_valid = np.isfinite(objective(fit.x, count=False))
@@ -653,7 +647,7 @@ def minimize_point(
         print(
             f"Finished: success={bool(fit.success) and final_valid}, evaluations={fit.nfev}; "
             f"{format_goodness_of_fit(statistics)}"
-            f"{_extra_minus2loglike(statistics, 2 * best_value)}. {message}",
+            f"{_extra_minus2loglike(statistics, best_m2loglike)}. {message}",
             flush=True,
         )
     return PointFit(
@@ -737,25 +731,24 @@ def star_values(model, point, unblind=False):
         Unless ``unblind``, they include the native DESI blinding offsets,
         exactly like the exported derived parameters.
     """
-    from lya_interface.derived import star_parameters
+    from lya_interface.derived import blind_star_parameters, star_parameters
 
     model.logposterior(point, return_derived=False)
     lya = _lya_cosmology(model)
     stars = star_parameters(lya.get_lya_cosmology(), lya.z_star, lya.k_star_ikms)
-    if unblind:
-        return np.array([stars["Delta2star"], stars["nstar"]])
-    return np.array([stars["Delta2star"] + lya._blind.get("Delta2_star", 0.),
-                     stars["nstar"] + lya._blind.get("n_star", 0.)])
+    if not unblind:
+        stars = blind_star_parameters(lya._blind, stars)
+    return np.array([stars["Delta2star"], stars["nstar"]])
 
 
 def is_blinded(model):
     """Return whether native blinding offsets apply to the star parameters."""
     blind = _lya_cosmology(model)._blind
-    return bool(blind.get("Delta2_star", 0.) or blind.get("n_star", 0.))
+    return bool(blind.get("Delta2_star", 0.) or blind.get("n_star", 0.))  # offsets of the plotted pair
 
 
 def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=None,
-                      levels=(0.6827, 0.9545), unblind=False):
+                      levels=None, unblind=False, nsigma=(1, 2)):
     """Plot the local-error ellipses of ``(n_star, Delta2_star)`` and the minimum.
 
     Parameters
@@ -772,8 +765,14 @@ def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=Non
         Prefix of the legend entries, useful when overlaying fits.
     color : str, optional
         Colour of this fit; levels are distinguished by line style.
-    levels : sequence of float, default=(0.6827, 0.9545)
-        Joint two-parameter probability contents of the ellipses.
+    levels : sequence of float, optional
+        Draw the contours enclosing these 2D probabilities instead (e.g.
+        ``(0.6827, 0.9545)``: Delta chi2 = 2.30, 6.18).
+    nsigma : sequence of float, default=(1, 2)
+        Contours whose projection onto each axis is the 1D ``nsigma`` interval
+        (Delta chi2 = nsigma**2), as cup1d's figures
+        (:func:`cup1d.postprocessing.minimizer.star.contour_delta_chi2`).
+        Ignored if ``levels`` is given.
     unblind : bool, default=False
         Plot values without the native DESI blinding offsets, for unblinded
         data sets such as DESI DR1 P1D. The "(blinded)" labels are then omitted.
@@ -794,13 +793,10 @@ def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=Non
     entry and axis label says "(blinded)" whenever an offset applies.
     """
     import matplotlib.pyplot as plt
-    from scipy.stats import chi2 as chi2_distribution
+    from cup1d.postprocessing.minimizer.star import contour_delta_chi2, ellipse_offsets
 
     stars = propagate_local_errors(point, local_errors, lambda p: star_values(model, p, unblind))
     delta2, nstar = stars.values
-    eigenvalues, eigenvectors = np.linalg.eigh(stars.covariance[::-1, ::-1])  # (n_star, Delta2_star)
-    angle = np.linspace(0, 2 * np.pi, 200)
-    unit_circle = np.vstack([np.cos(angle), np.sin(angle)])
     suffix = " (blinded)" if is_blinded(model) and not unblind else ""
     prefix = "" if label is None else label + ", "
     if ax is None:
@@ -809,11 +805,10 @@ def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=Non
         fig = ax.figure
     if color is None:
         color = ax._get_lines.get_next_color()
-    for level, style in zip(levels, ("-", "--", ":", "-.")):
-        delta_chi2 = chi2_distribution.ppf(level, 2)
-        ellipse = eigenvectors @ (np.sqrt(delta_chi2 * np.maximum(eigenvalues, 0))[:, None] * unit_circle)
+    for contour, style in zip(_contours(levels, nsigma), ("-", "--", ":", "-.")):
+        ellipse = ellipse_offsets(stars.covariance[::-1, ::-1], contour_delta_chi2(**contour[0]))  # (n_star, Delta2_star)
         ax.plot(nstar + ellipse[0], delta2 + ellipse[1], style, color=color,
-                label=f"{prefix}{100 * level:.0f}%{suffix}")
+                label=f"{prefix}{contour[1]}{suffix}")
     ax.plot(nstar, delta2, "x", color=color, ms=10, mew=2, label=f"{prefix}MLE{suffix}")
     ax.set_xlabel(r"$n_\star$" + suffix)
     ax.set_ylabel(r"$\Delta^2_\star$" + suffix)
@@ -826,6 +821,13 @@ def plot_star_ellipse(model, point, local_errors, ax=None, label=None, color=Non
         "blinded": bool(suffix), "propagated": stars,
     }
     return fig, ax, summary
+
+
+def _contours(levels, nsigma):
+    """``[(contour_delta_chi2 keywords, legend label), ...]`` of the ellipses."""
+    if levels is not None:
+        return [({"level": level}, f"{100 * level:.0f}%") for level in levels]
+    return [({"nsigma": n}, f"{n:g}$\\sigma$") for n in nsigma]
 
 
 def plot_vega_point(model, point, title=None):
@@ -869,8 +871,8 @@ _STAR_LABELS = {"Delta2star": r"$\Delta^2_\star$", "nstar": r"$n_\star$"}
 
 
 def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "nstar", "ap", "at"),
-                        axes=None, label=None, color=None, levels=(0.6827, 0.9545),
-                        unblind=False, labels=None):
+                        axes=None, label=None, color=None, levels=None,
+                        unblind=False, labels=None, nsigma=(1, 2)):
     """Triangle plot of local-error ellipses for star and sampled parameters.
 
     Parameters
@@ -886,7 +888,7 @@ def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "n
         sampled parameter names.
     axes : numpy.ndarray, optional
         Square axes array from a previous call, to overlay several fits.
-    label, color, levels, unblind
+    label, color, levels, unblind, nsigma
         As in :func:`plot_star_ellipse`.
     labels : mapping, optional
         Axis labels by parameter name; defaults to LaTeX for star parameters.
@@ -906,7 +908,6 @@ def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "n
     Diagonal panels show the Gaussian marginal of each quantity.
     """
     import matplotlib.pyplot as plt
-    from scipy.stats import chi2 as chi2_distribution
 
     parameters = tuple(parameters)
     stars_needed = any(name in _STAR_LABELS for name in parameters)
@@ -934,8 +935,7 @@ def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "n
         fig = axes[0, 0].figure
     if color is None:
         color = axes[0, 0]._get_lines.get_next_color()
-    angle = np.linspace(0, 2 * np.pi, 200)
-    unit_circle = np.vstack([np.cos(angle), np.sin(angle)])
+    from cup1d.postprocessing.minimizer.star import contour_delta_chi2, ellipse_offsets
     for i in range(size):
         ax = axes[i, i]
         grid = values[i] + errors[i] * np.linspace(-4, 4, 200)
@@ -945,10 +945,8 @@ def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "n
         for j in range(i):
             ax = axes[i, j]
             block = covariance[np.ix_([j, i], [j, i])]
-            eigenvalues, eigenvectors = np.linalg.eigh(block)
-            for level, style in zip(levels, ("-", "--", ":", "-.")):
-                radius = np.sqrt(chi2_distribution.ppf(level, 2) * np.maximum(eigenvalues, 0))
-                ellipse = eigenvectors @ (radius[:, None] * unit_circle)
+            for contour, style in zip(_contours(levels, nsigma), ("-", "--", ":", "-.")):
+                ellipse = ellipse_offsets(block, contour_delta_chi2(**contour[0]))
                 ax.plot(values[j] + ellipse[0], values[i] + ellipse[1], style, color=color)
             ax.plot(values[j], values[i], "x", color=color, ms=8, mew=2)
     for i in range(size):

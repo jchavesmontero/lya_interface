@@ -54,7 +54,8 @@ def test_minimization_returns_real_fitted_point_and_reports_budget_failure(capsy
 
 def test_native_blinding_shifts_diagnostics_not_scientific_predictions(monkeypatch):
     from lya_interface.adapters import cup1d_backend
-    offsets = dict(Delta2_star=.05, n_star=.01, alpha_star=.005)
+    from cup1d.utils.blinding import Blinding
+    offsets = Blinding(dict(Delta2_star=.05, n_star=.01, alpha_star=.005))
     monkeypatch.setattr(cup1d_backend, "native_blinding", lambda path: offsets)
 
     class Blinded(LikelihoodFixture):

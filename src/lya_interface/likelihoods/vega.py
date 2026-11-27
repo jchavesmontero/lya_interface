@@ -383,6 +383,7 @@ class VegaLikelihood(Likelihood):
         P1D Kaiser metal model, on every Vega (mu, k) grid (k converted from
         h/Mpc with the documented template ``h``).
         """
+        from forestflow.model.arinyo import ArinyoModel
         k_p = coefficients[self.zeff]["kp"]
         h = float(self.template_h)
         out = {}
@@ -391,7 +392,7 @@ class VegaLikelihood(Likelihood):
             shape = np.broadcast_shapes(core.muk_grid.shape, core.k_grid.shape)
             # Underflow at Vega's highest k is kept at machine precision, as
             # for the ForestFlow nonlinear correction.
-            pressure = np.maximum(np.exp(-0.5 * (h * core.k_grid / k_p) ** 2), np.finfo(float).tiny)
+            pressure = np.maximum(ArinyoModel.pressure_leg(h * core.k_grid, k_p), np.finfo(float).tiny)
             out[name] = np.broadcast_to(pressure, shape)
         return out
 

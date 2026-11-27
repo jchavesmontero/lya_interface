@@ -220,8 +220,8 @@ class Fit:
             raise ValueError("run minimize() or restore a fit first")
         return star_values(self.model, self.best_fit.point, unblind)
 
-    def plot_star_ellipse(self, ax=None, label=None, color=None, levels=(0.6827, 0.9545),
-                          unblind=False):
+    def plot_star_ellipse(self, ax=None, label=None, color=None, levels=None,
+                          unblind=False, nsigma=(1, 2)):
         """Plot the ``(n_star, Delta2_star)`` local-error ellipses at the best fit.
 
         Local errors are estimated with Gauss-Newton first if not available.
@@ -234,10 +234,10 @@ class Fit:
             self.estimate_errors()
         return plot_star_ellipse(self.model, self.best_fit.point, self.local_errors,
                                  ax=ax, label=label, color=color, levels=levels,
-                                 unblind=unblind)
+                                 unblind=unblind, nsigma=nsigma)
 
     def plot_triangle(self, parameters=("Delta2star", "nstar", "ap", "at"), axes=None,
-                      label=None, color=None, levels=(0.6827, 0.9545), unblind=False):
+                      label=None, color=None, levels=None, unblind=False, nsigma=(1, 2)):
         """Triangle plot of local-error ellipses at the best fit.
 
         Local errors are estimated with Gauss-Newton first if not available.
@@ -250,7 +250,7 @@ class Fit:
             self.estimate_errors()
         return plot_local_triangle(self.model, self.best_fit.point, self.local_errors,
                                    parameters=parameters, axes=axes, label=label,
-                                   color=color, levels=levels, unblind=unblind)
+                                   color=color, levels=levels, unblind=unblind, nsigma=nsigma)
 
     def plot_vega(self, point=None, title=None):
         """Plot the Vega correlations at ``point`` (default: the best fit)."""

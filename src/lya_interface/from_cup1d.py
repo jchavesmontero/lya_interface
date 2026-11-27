@@ -131,9 +131,8 @@ def interface_info_from_cup1d(cup1d_config, output_yaml, analysis=None,
     likelihood = info["likelihood"][CUP1D_LIKELIHOOD]
     likelihood["native_config"] = forest["native_config"]
     likelihood["parameter_definitions"] = params
-    import forestflow
-    covariance = (Path(forestflow.__file__).resolve().parents[1]
-                  / "data" / "covariance" / f"l1O_cov_{emulator_label}.npy")
+    from cup1d.likelihood.likelihood import emulator_covariance_path
+    covariance = emulator_covariance_path(like.theory.emulator)  # the file native cup1d reads
     likelihood["covariance_asset"] = os.path.relpath(covariance, out_dir)
     redshifts = sorted({round(float(z), 6) for data in like.data.values() for z in data.z})
     likelihood["fiducial_M"] = {z: float(cosmo.get_dkms_dMpc(z)) for z in redshifts}

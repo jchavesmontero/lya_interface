@@ -45,6 +45,8 @@ class LinearFixture(Theory):
 class Histories:
     def get_tau_eff(self,z,like_params=None):
         return np.full(len(z),.4)
+    def get_mean_flux(self,z,like_params=None):
+        return np.exp(-self.get_tau_eff(z,like_params))
     def get_gamma(self,z,like_params=None):
         return np.full(len(z),like_params["gamma_0"])
     def get_sigT_kms(self,z,like_params=None):

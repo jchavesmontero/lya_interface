@@ -100,15 +100,17 @@ def native_blinding(path):
 
     This reads static data metadata only, never initializes CAMB or Analysis.
     Offsets are applied to exported star diagnostics, not physical predictions.
+
+    Returns
+    -------
+    cup1d.utils.blinding.Blinding
+        Offsets decided by cup1d's own rule (``Blinding.from_data``), a
+        read-only mapping with ``blind``/``unblind`` methods.
     """
-    from cup1d.utils.blinding import set_blinding
+    from cup1d.utils.blinding import Blinding
     args, _, _ = native_configuration(path)
-    for name in args.data_label:
-        data = set_p1d(args, name)
-        if data.apply_blinding:
-            seed = int.from_bytes(data.blinding.encode("utf-8"), byteorder="big")
-            return set_blinding(True, seed)
-    return set_blinding(False, 0)
+    # generator: data sets are read until the first one requesting blinding
+    return Blinding.from_data(set_p1d(args, name) for name in args.data_label)
 
 
 def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,

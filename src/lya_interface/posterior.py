@@ -341,12 +341,14 @@ def load_posterior(prefix, burn=0.3, max_rows=1_000_000, unblind=False, label=""
 
     native_config = run_native_config(prefix, log)
     fid_cosmo_label = Args.from_yaml(native_config, verbose=False).fid_cosmo_label
-    blinding = {key: float(value) for key, value in native_blinding(native_config).items()}
+    blinding = native_blinding(native_config)
     blinded = any(blinding.get(key, 0.0) for key in ("Delta2_star", "n_star"))
     names = [native_parameter_name(name) for name in sampled + derived]
     if unblind and blinded:
-        for i, name in enumerate(names):
-            values[:, i] -= blinding.get(name, 0.0) if name in ("Delta2_star", "n_star") else 0.0
+        stars = [name for name in names if name in ("Delta2_star", "n_star")]
+        columns = blinding.unblind({name: values[:, names.index(name)] for name in stars})
+        for name in stars:
+            values[:, names.index(name)] = columns[name]
         log("star parameters unblinded")
     samples = PosteriorSamples(
         values, names, weights,

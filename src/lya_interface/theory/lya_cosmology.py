@@ -2,7 +2,7 @@
 import numpy as np
 from cobaya.theory import Theory
 from lya_interface.cosmology import CobayaCosmologySnapshot
-from lya_interface.derived import star_parameters, DERIVED_ALIASES
+from lya_interface.derived import star_parameters, DERIVED_ALIASES, blind_star_parameters
 
 
 class LyaCosmology(Theory):
@@ -27,7 +27,8 @@ class LyaCosmology(Theory):
         self._zs = set(float(z) for z in self.redshifts) | {float(self.z_star)}
         self.calls = 0
         self._blinding_config = None
-        self._blind = {}
+        from cup1d.utils.blinding import Blinding
+        self._blind = Blinding({})
 
     def get_can_provide(self):
         """Declare immutable cosmology and diagnostic-blinding products.
@@ -136,8 +137,7 @@ class LyaCosmology(Theory):
         stars = star_parameters(snapshot, self.z_star, self.k_star_ikms) if want_derived else {}
         # As in native cup1d, blinding affects exported diagnostics only.
         # Keep the snapshot and every scientific prediction unshifted.
-        state["derived"] = {name: value + self._blind.get(DERIVED_ALIASES[name], 0.)
-                            for name, value in stars.items()}
+        state["derived"] = blind_star_parameters(self._blind, stars)
         state["lya_blinding"] = self._blinding_config
         self.calls += 1
 

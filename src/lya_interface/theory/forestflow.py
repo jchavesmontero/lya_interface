@@ -1,4 +1,4 @@
-"""Native IGM histories, deterministic mean Arinyo parameters and P1D."""
+"""Native IGM histories and P1D: ForestFlow (Arinyo + projection) or LaCE (direct P1D)."""
 from types import MappingProxyType
 import numpy as np
 from cobaya.theory import Theory
@@ -21,8 +21,23 @@ def diagnostic_column_name(quantity, redshift):
     return f"{quantity}_z_{token}"
 
 
+# Emulators predicting P1D directly (cup1d.emulator.factory labels); the others
+# are ForestFlow bundles (Arinyo coefficients projected to P1D).
+P1D_EMULATORS = ("lace_mpg",)
+FORESTFLOW_EMULATORS = ("forest_mpg_cinn", "forest_mpg_gp")
+
+
 class ForestFlowTheory(Theory):
-    """Provide deterministic ForestFlow raw-P1D products to Cobaya graphs."""
+    """Provide deterministic raw-P1D products to Cobaya graphs.
+
+    ``emulator_label`` selects a ForestFlow bundle (``forest_mpg_cinn``,
+    ``forest_mpg_gp``: emulated Arinyo coefficients projected to P1D) or the
+    LaCE Gaussian process (``lace_mpg``: P1D emulated directly). Both take
+    their inputs from :func:`cup1d.theory.emulator_inputs.emulator_inputs`
+    with the Cobaya cosmology snapshot, as native cup1d does with its own
+    cosmology. With LaCE there are no Arinyo coefficients: the coefficient and
+    Arinyo products are ``None`` and the bias diagnostics NaN.
+    """
     stop_at_error: bool = True
     native_config: str | None = None
     parameter_definitions: dict = {}
@@ -71,23 +86,40 @@ class ForestFlowTheory(Theory):
             if len(bounds) != 2 or not np.all(np.isfinite(bounds)) or bounds[0] > bounds[1]:
                 raise ValueError(f"invalid supported domain for {name}")
         self.params = {k: None for k in self.mapping}
-        if self.emulator_label not in ("forest_mpg_cinn", "forest_mpg_gp"):
-            raise ValueError("ForestFlowTheory requires emulator_label 'forest_mpg_cinn' or 'forest_mpg_gp'")
-        if self.emulator_label == "forest_mpg_gp":
+        if self.emulator_label not in FORESTFLOW_EMULATORS + P1D_EMULATORS:
+            raise ValueError(f"emulator_label must be one of {FORESTFLOW_EMULATORS + P1D_EMULATORS}")
+        self.p1d_emulator = self.emulator_label in P1D_EMULATORS
+        if self.p1d_emulator:
+            from cup1d.emulator.factory import set_emulator
             if self.model_path:
                 raise ValueError("custom model_path/transformation_path apply only to the cINN emulator")
-            self.emulator = load_emulator("forest_mpg_gp")
-        elif self.model_path:  # custom cINN assets
-            self.emulator = load_emulator(None, model_path=self.model_path, transf_file=self.transformation_path,
-                Nrealizations=self.realizations, compile_model=True)
+            if self.metal_moments:
+                raise ValueError("the Kaiser metal model needs a ForestFlow emulator")
+            self.emulator = set_emulator(self.emulator_label)
+            self.input_labels = list(self.emulator.emu_params)
+            self.kp_iMpc = float(self.emulator.kp_Mpc)
+            self.kmax_iMpc = float(self.emulator.kmax_Mpc)
+            self.zmax = float(getattr(self.emulator, "zmax", 4.6))
         else:
-            self.emulator = load_emulator(self.emulator_label, Nrealizations=self.realizations, compile_model=True)
+            if self.emulator_label == "forest_mpg_gp":
+                if self.model_path:
+                    raise ValueError("custom model_path/transformation_path apply only to the cINN emulator")
+                self.emulator = load_emulator("forest_mpg_gp")
+            elif self.model_path:  # custom cINN assets
+                self.emulator = load_emulator(None, model_path=self.model_path, transf_file=self.transformation_path,
+                    Nrealizations=self.realizations, compile_model=True)
+            else:
+                self.emulator = load_emulator(self.emulator_label, Nrealizations=self.realizations, compile_model=True)
+            if set(self.emulator.output_labels) != {"bias", "bias_eta", "q1", "q2", "kvav", "av", "bv", "kp"}:
+                raise ValueError("bundle does not provide the supported named Arinyo parameters")
+            self.input_labels = list(self.emulator.input_labels)
+            self.kp_iMpc = float(self.emulator.kp_iMpc)
+            self.kmax_iMpc = float(self.emulator.kmax_1d_iMpc)
+            self.zmax = float(self.emulator.zmax)
         required = {"Delta2_p", "n_p", "mF", "gamma", "sigT_Mpc", "kF_Mpc"}
-        if not required <= set(self.emulator.input_labels) or set(self.emulator.input_labels) - required - {"alpha_p"}:
-            raise ValueError("unsupported ForestFlow input labels")
-        if set(self.emulator.output_labels) != {"bias", "bias_eta", "q1", "q2", "kvav", "av", "bv", "kp"}:
-            raise ValueError("bundle does not provide the supported named Arinyo parameters")
-        if self.emulator.kp_iMpc != .7:
+        if not required <= set(self.input_labels) or set(self.input_labels) - required - {"alpha_p"}:
+            raise ValueError("unsupported emulator input labels")
+        if self.kp_iMpc != .7:
             raise ValueError("native training-hull assets use kp=0.7 /Mpc; a different pivot needs matching domain assets")
         if set(self.emulator.list_sim_cube) != {f"mpg_{i}" for i in range(30)}:
             raise ValueError("this domain bridge requires the full MPG cube; held-out/reduced/other suites need matching training-domain assets")
@@ -182,8 +214,8 @@ class ForestFlowTheory(Theory):
             raise ValueError("ForestFlow requires coefficient or P1D redshifts")
         from cup1d.utils.utils_sims import get_training_hc
         from cup1d.utils.hull import Hull
-        labels, points, _, _ = get_training_hc(self.emulator.list_sim_cube[0][:3], emu_params=self.emulator.input_labels)
-        if set(labels) != set(self.emulator.input_labels):
+        labels, points, _, _ = get_training_hc(self.emulator.list_sim_cube[0][:3], emu_params=self.input_labels)
+        if set(labels) != set(self.input_labels):
             raise ValueError("training domain labels differ from model inputs")
         self.domain_labels = labels
         self.hull = Hull(zs=np.array(self.redshifts), data_hull=points,
@@ -199,6 +231,24 @@ class ForestFlowTheory(Theory):
             Provider from which ``lya_cosmology`` is retrieved per point.
         """
         self.provider = provider
+
+    def _emulator_settings(self):
+        """Fill emulator settings missing in subclasses with their own ``initialize``.
+
+        Such subclasses (e.g. test fixtures) set only ``emulator``: a
+        ForestFlow-like bundle exposing ``input_labels``, ``kp_iMpc``,
+        ``kmax_1d_iMpc`` and ``zmax``.
+        """
+        if not hasattr(self, "p1d_emulator"):
+            self.p1d_emulator = False
+        if not hasattr(self, "input_labels"):
+            self.input_labels = list(self.emulator.input_labels)
+        if not hasattr(self, "kp_iMpc"):
+            self.kp_iMpc = float(self.emulator.kp_iMpc)
+        if not hasattr(self, "kmax_iMpc"):
+            self.kmax_iMpc = float(self.emulator.kmax_1d_iMpc)
+        if not hasattr(self, "zmax"):
+            self.zmax = float(self.emulator.zmax)
 
     def calculate(self, state, want_derived=True, **params_values):
         """Evaluate deterministic Arinyo parameters and raw ForestFlow P1D.
@@ -225,6 +275,7 @@ class ForestFlowTheory(Theory):
         from forestflow.model.arinyo import ArinyoModel
         from forestflow.model.linear import LinearTheoryGrid
         from lya_interface.projection import project_request
+        self._emulator_settings()
         snapshot = self.provider.get_result("lya_cosmology")
         try:
             for name, bounds in self.cosmology_domain.items():
@@ -236,69 +287,83 @@ class ForestFlowTheory(Theory):
             # public extension point working while the native implementation
             # uses the full union of P1D, coefficient, and diagnostic grids.
             zs = getattr(self, "redshifts", self.request.redshifts)
-            if min(zs) < 2. or max(zs) > self.emulator.zmax:
+            if min(zs) < 2. or max(zs) > self.zmax:
                 raise ModelDomainError("redshift outside MPG bundle coverage")
             native = route({k: v for k, v in params_values.items() if k not in self.cosmology_domain}, self.mapping)
-            models = self.igm.models
-            flux = np.exp(-models["F_model"].get_tau_eff(np.array(zs), like_params=native))
-            gamma = models["T_model"].get_gamma(np.array(zs), like_params=native)
-            thermal = models["T_model"].get_sigT_kms(np.array(zs), like_params=native)
-            pressure = models["P_model"].get_kF_kms(np.array(zs), like_params=native)
-            M = snapshot.get_dkms_diMpc(np.array(zs))
+            from cup1d.theory.emulator_inputs import emulator_inputs
+            z_array = np.array(zs)
+            M = snapshot.get_dkms_diMpc(z_array)
+            # the same mapping as native cup1d (Theory.get_emulator_calls)
+            columns = emulator_inputs(self.input_labels, z_array,
+                                      [snapshot.get_linP_Mpc_params(z, self.kp_iMpc) for z in zs],
+                                      M, self.igm, like_params=native)
             inputs = []
-            for i, z in enumerate(zs):
-                values = snapshot.get_linP_Mpc_params(z, self.emulator.kp_iMpc)
-                values.update(mF=flux[i], gamma=gamma[i], sigT_Mpc=thermal[i]/M[i], kF_Mpc=pressure[i]*M[i])
-                row = {k: float(values[k]) for k in self.emulator.input_labels}
+            for i in range(len(zs)):
+                row = {k: float(columns[k][i]) for k in self.input_labels}
                 if not all(np.isfinite(v) for v in row.values()) or not 0 < row["mF"] < 1 or any(row[k] <= 0 for k in ("Delta2_p", "gamma", "sigT_Mpc", "kF_Mpc")):
                     raise ModelDomainError("nonphysical IGM/emulator input")
                 inputs.append(row)
+            flux = columns["mF"]
+            gamma = columns["gamma"]
+            thermal = columns["sigT_Mpc"] * M     # km/s
+            pressure = columns["kF_Mpc"] / M      # s/km
             if self.enforce_training_hull and not self.hull.in_hulls(np.array([[row[k] for k in self.domain_labels] for row in inputs])):
                 raise ModelDomainError("outside native training pairwise hull")
+            if self.p1d_emulator:
+                arinyo = None
             # Redshift-independent common random numbers: stable latent block
             # zero for each input, invariant under batching/order/chunking.
-            if getattr(self.emulator, "uses_sampling", True):
+            elif getattr(self.emulator, "uses_sampling", True):
                 ari = self.emulator.evaluate(inputs, Nrealizations=self.realizations,
                     seed=self.seed, latent_indices=[0]*len(zs))
             else:  # deterministic emulator: no latent draws
                 ari = self.emulator.evaluate(inputs)
             self.calls += 1
-            arinyo = {z: MappingProxyType({k: float(np.atleast_1d(ari[k])[i]) for k in self.emulator.output_labels}) for i, z in enumerate(zs)}
+            if not self.p1d_emulator:
+                arinyo = {z: MappingProxyType({k: float(np.atleast_1d(ari[k])[i]) for k in self.emulator.output_labels}) for i, z in enumerate(zs)}
             diagnostics = {}
-            get_t0 = getattr(models["T_model"], "get_T0", None)
-            # ``get_T0`` is part of the interface-owned IGM contract.  Keep
-            # older lightweight ForestFlowTheory subclasses usable when they
-            # only implement the pre-existing width/gamma API; they simply
-            # cannot provide a physical T0 diagnostic.
-            t0 = (get_t0(np.array(zs), like_params=native) if get_t0 else
-                  np.full(len(zs), np.nan))
+            get_t0 = getattr(self.igm.models["T_model"], "get_T0", None)
+            t0 = (get_t0(z_array, like_params=native) if get_t0 else np.full(len(zs), np.nan))
             for index, z in enumerate(zs):
-                coeff = arinyo[z]
-                bias = coeff["bias"]
-                beta = np.nan if bias == 0 else snapshot.get_growth_rate(z) * coeff["bias_eta"] / bias
+                coeff = arinyo[z] if arinyo is not None else None
+                bias = coeff["bias"] if coeff is not None else np.nan
+                bias_eta = coeff["bias_eta"] if coeff is not None else np.nan
+                beta = np.nan if (coeff is None or bias == 0) else snapshot.get_growth_rate(z) * bias_eta / bias
                 diagnostics[z] = MappingProxyType(dict(
                     z=float(z), mean_flux=float(flux[index]),
                     tau_eff=float(-np.log(flux[index])), gamma=float(gamma[index]),
                     sigT_kms=float(thermal[index]), kF_kms=float(pressure[index]),
                     T0_K=float(t0[index]), Delta2_p=float(inputs[index]["Delta2_p"]),
                     n_p=float(inputs[index]["n_p"]), dkms_diMpc=float(M[index]),
-                    bias=float(coeff["bias"]), bias_eta=float(coeff["bias_eta"]),
+                    bias=float(bias), bias_eta=float(bias_eta),
                     beta=float(beta), arinyo=coeff,
                 ))
-            model = ArinyoModel(fiducial_cosmology=snapshot)
-            linear = LinearTheoryGrid(z=np.array(zs), cosmology=snapshot)
-            state["forestflow_coefficients"] = MappingProxyType(arinyo)
+            state["forestflow_coefficients"] = MappingProxyType(arinyo) if arinyo is not None else None
             state["forestflow_diagnostics"] = MappingProxyType(diagnostics)
-            if self.request is not None:
+            moments = None
+            if self.request is None:
+                powers = None
+            elif self.p1d_emulator:
+                from cup1d.likelihood.external import emulate_request
+                try:
+                    powers = emulate_request(self.request, snapshot, self.emulator,
+                                             dict(zip(zs, inputs)), kmax_iMpc=self.kmax_iMpc,
+                                             n_k=getattr(self, "n_k", None))
+                except ValueError as error:
+                    raise ModelDomainError(str(error)) from error
+            else:
+                model = ArinyoModel(fiducial_cosmology=snapshot)
+                linear = LinearTheoryGrid(z=z_array, cosmology=snapshot)
                 # One pass for the Lya P1D and, with the Kaiser metal model,
                 # its metal moments; optionally on a coarse k grid.
                 projected = project_request(
                     self.request, snapshot, model, linear, arinyo, self.integrator,
-                    self.emulator.kmax_1d_iMpc,
+                    self.kmax_iMpc,
                     moments=getattr(self, "metal_moments", False),
                     n_k=getattr(self, "n_k", None),
                 )
                 powers, moments = projected if getattr(self, "metal_moments", False) else (projected, None)
+            if powers is not None:
                 context = PredictionContext(self.request.identity, zs, tuple(flux), tuple(M))
                 state["forestflow_p1d"] = MappingProxyType(dict(valid=True, powers=powers, context=context,
                     inputs=tuple(MappingProxyType(r) for r in inputs), cosmology_id=snapshot.identity,
@@ -306,7 +371,7 @@ class ForestFlowTheory(Theory):
             else:
                 state["forestflow_p1d"] = MappingProxyType(dict(valid=True, powers=None, context=None,
                     inputs=tuple(MappingProxyType(r) for r in inputs), cosmology_id=snapshot.identity))
-            state["forestflow_arinyo"] = MappingProxyType(arinyo)
+            state["forestflow_arinyo"] = MappingProxyType(arinyo) if arinyo is not None else None
         except ModelDomainError as error:
             state["forestflow_p1d"] = MappingProxyType(dict(valid=False, reason=str(error)))
             state["forestflow_arinyo"] = None
