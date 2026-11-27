@@ -161,3 +161,6 @@ fig = plot_star_simulations(simulations, [
          covariance=cobaya_cov, color="C0", marker="P"),
 ])
 plt.show()
+
+# %%
+fit.close()

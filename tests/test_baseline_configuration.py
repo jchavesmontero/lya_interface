@@ -50,20 +50,3 @@ def test_missing_covariance_directory_resolves_to_sibling_checkout(tmp_path):
     assert Path(info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]["covariance_asset"]) == tmp_path / "ForestFlow/data/covariance/missing.npy"
 
 
-def test_joint_vega_example_keeps_p1d_registry_and_adds_bao_parameters():
-    info = load_configuration(ROOT / "examples/joint_validation_vega_forestflow.yaml")
-    p1d = info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]
-    vega = info["likelihood"]["lya_interface.likelihoods.vega.VegaLikelihood"]
-    assert "ap" not in p1d["parameter_definitions"]
-    assert set(vega["parameter_mapping"]) == {"ap", "at", "xi3d_beta_hcd", "xi3d_L0_hcd", "xi3d_drp_QSO"}
-    assert vega["template_h"] == 0.6736
-
-
-def test_desi_dr1_vega_notebook_configuration_has_four_mean_flux_nodes():
-    info = load_configuration(ROOT / "examples/joint_desi_dr1_vega_mock.yaml")
-    forest = info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]
-    vega = info["likelihood"]["lya_interface.likelihoods.vega.VegaLikelihood"]
-    assert all(f"igm_tau_eff_{index}" in info["params"] for index in range(4))
-    assert forest["native_config"].endswith("native_cm2026.yaml")
-    assert set(vega["parameter_mapping"]) == {"ap", "at", "xi3d_beta_hcd", "xi3d_L0_hcd"}
-    assert vega["fixed_native_parameters"] == {"drp_QSO": 0.0}

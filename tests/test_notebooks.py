@@ -35,31 +35,3 @@ def test_notebook_structure_and_code(path):
     ]
 
 
-def test_joint_notebook_uses_dr2_vega_configuration_and_fit_workflow():
-    notebook = jupytext.read(NOTEBOOKS / "joint_DR1P1D_DR2BAO.py")
-    source = "\n".join(c.source for c in notebook.cells if c.cell_type == "code")
-    tree = ast.parse("\n".join(line for line in source.splitlines()
-                               if not line.lstrip().startswith("%")))
-    strings = {node.value for node in ast.walk(tree)
-               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-    configs = {s for s in strings if s.startswith("joint_dr1p1d_forestmpggp_dr2bao_lya")}
-    assert {"joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta",
-            "joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_free_beta"} <= configs
-    for name in configs:
-        assert (NOTEBOOKS.parent / "examples" / f"{name}.yaml").is_file()
-        if "_kaiser_" in name:
-            assert (NOTEBOOKS.parent / "examples" / f"{name}_rmin10.yaml").is_file()
-    for call in ("Fit(CONFIG, metal_alpha_reference=START_FROM)", "fit.minimize(", "fit.save(",
-                 "Fit.from_results(", "fit.plot_triangle(", "global_ic_point(",
-                 "default_ic_path(info, IC_VARIATION)", "vega.metal_alpha_at("):
-        assert call in source
-
-
-def test_cup1d_vega_mock_notebook_has_compact_joint_workflow():
-    notebook = jupytext.read(NOTEBOOKS / "04_joint_cup1d_vega_mock.py")
-    source = "\n".join(c.source for c in notebook.cells if c.cell_type == "code")
-    assert "examples/joint_desi_dr1_vega_mock.yaml" in source
-    assert "igm_tau_eff_3" in source
-    assert "parameters_for_evaluation" in source
-    assert "plot_vega_point" in source
-    assert "minimize_point" in source

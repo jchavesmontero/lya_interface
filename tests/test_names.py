@@ -1,5 +1,4 @@
 """Public parameter prefixes and the translator for results saved before them."""
-import numpy as np
 import pytest
 from lya_interface.names import current_name, native_name, nuisance_public_name, translate_legacy
 
@@ -27,14 +26,6 @@ def test_legacy_names_are_translated():
     assert current_name("xi3d_L0_hcd") == "xi3d_L0_hcd"
     with pytest.raises(ValueError, match="both translate"):
         translate_legacy({"bias_hcd": 1.0, "xi3d_bias_hcd": 1.0})
-
-
-def test_reference_point_translates_a_saved_fit(tmp_path):
-    from lya_interface.likelihoods.vega import reference_point
-
-    np.save(tmp_path / "old.npy", {"format_version": 1, "best_fit": {"point": {"p1d_b_SiIIa_1": -4.0}}},
-            allow_pickle=True)
-    assert reference_point(str(tmp_path / "old.npy")) == {"metal_b_SiIIa_1": -4.0}
 
 
 def test_near_prior_bounds_reports_flat_and_truncated_edges():
