@@ -986,10 +986,12 @@ def plot_local_triangle(model, point, local_errors, parameters=("Delta2star", "n
 def _gauss_newton_hessian(model, names, lower, width, center, step):
     """Unit-cube posterior curvature ``sum J^T C^-1 J`` plus the prior curvature.
 
-    Every Gaussian data term contributes its own ``J^T C^-1 J``: the cup1d P1D
-    (per-redshift covariance blocks) and, if present, Vega (global or
-    per-correlation inverse covariance). The terms are independent, so their
-    curvatures add.
+    Every Gaussian data term contributes its own ``J^T C^-1 J``: the cup1d P1D,
+    with the covariance blocks its likelihood uses (built by
+    :mod:`cup1d.inference.curvature`, the same code as cup1d's own error
+    estimate: the full covariance of a data set when it has one) and, if
+    present, Vega (global or per-correlation inverse covariance). The terms
+    are independent, so their curvatures add.
 
     Parameters
     ----------
@@ -1003,7 +1005,8 @@ def _gauss_newton_hessian(model, names, lower, width, center, step):
     Returns
     -------
     numpy.ndarray
-        Symmetric ``(N, N)`` curvature of ``-log posterior``.
+        Symmetric ``(N, N)`` curvature of ``-log posterior`` (without the
+        flat-prior term, added by :func:`estimate_local_errors`).
 
     Raises
     ------
@@ -1011,8 +1014,8 @@ def _gauss_newton_hessian(model, names, lower, width, center, step):
         If the graph has no supported data likelihood, or Vega marginalizes
         template coefficients in the fit (its model is then not a fixed vector).
     """
-    from scipy.linalg import cho_solve
-
+    from cup1d.inference.curvature import (finite_difference_jacobian, flatten_p1d,
+                                           gauss_newton_curvature, p1d_blocks)
     try:
         backend = cup1d_component(model).backend
     except ValueError:
@@ -1025,26 +1028,8 @@ def _gauss_newton_hessian(model, names, lower, width, center, step):
     if vega is not None and vega.backend.marginalize_in_fit:
         raise ValueError("gauss_newton does not support Vega marginalize_in_fit")
 
-    def vectors(x):
-        point = dict(zip(names, lower + width * x))
-        pieces = []
-        if backend is not None:
-            _, powers = evaluate_point(model, point)
-            pieces += [np.asarray(powers[key][i]) for key, data in backend.data.items()
-                       for i in range(len(data.z))]
-        else:
-            model.logposterior(point, return_derived=False)
-        if vega is not None:
-            values = vega.parameters_for_evaluation(vega_inputs(model, vega, point))
-            cf = vega.backend.compute_model(values, run_init=False)
-            pieces.append(np.concatenate([np.asarray(cf[n])[vega.backend.data[n].model_mask]
-                                          for n in vega.backend.corr_items]))
-        return pieces
-
-    solvers = []
-    if backend is not None:
-        solvers += [(lambda j, f=backend.chol_Pk_kms[key][i]: cho_solve(f, j))
-                    for key, data in backend.data.items() for i in range(len(data.z))]
+    blocks = p1d_blocks(backend) if backend is not None else []
+    solvers = [block.solve for block in blocks]
     if vega is not None:
         vb = vega.backend
         if vb._use_global_cov:
@@ -1054,22 +1039,23 @@ def _gauss_newton_hessian(model, names, lower, width, center, step):
             invcov = block_diag(*[vb.data[n].inv_masked_cov for n in vb.corr_items])
         solvers.append(lambda j: invcov @ j)
 
-    base = vectors(center)
-    jacobian = [np.empty((len(b), len(names))) for b in base]
-    for index in range(len(names)):
-        h = min(step, center[index], 1. - center[index])
-        direction = np.zeros(len(names))
-        if h > 0:
-            direction[index] = h
-            plus, minus = vectors(center + direction), vectors(center - direction)
-            derivative = [(p - m) / (2 * h) for p, m in zip(plus, minus)]
+    def vectors(x):
+        point = dict(zip(names, lower + width * x))
+        pieces = []
+        if backend is not None:
+            _, powers = evaluate_point(model, point)
+            pieces += flatten_p1d(powers, blocks)
         else:
-            direction[index] = step if center[index] < .5 else -step
-            other = vectors(center + direction)
-            derivative = [(o - b) / direction[index] for o, b in zip(other, base)]
-        for block, column in zip(jacobian, derivative):
-            block[:, index] = column
-    hessian = sum(j.T @ solve(j) for j, solve in zip(jacobian, solvers))
+            model.logposterior(point, return_derived=False)
+        if vega is not None:
+            values = vega.parameters_for_evaluation(vega_inputs(model, vega, point))
+            cf = vega.backend.compute_model(values, run_init=False)
+            pieces.append(np.concatenate([np.asarray(cf[n])[vega.backend.data[n].model_mask]
+                                          for n in vega.backend.corr_items]))
+        return pieces
+
+    jacobians = finite_difference_jacobian(vectors, center, step)
+    hessian = gauss_newton_curvature(jacobians, solvers)
     return hessian + _prior_curvature(model, names, lower, width, center, step)
 
 
@@ -1093,7 +1079,8 @@ def _prior_curvature(model, names, lower, width, center, step):
     return np.diag(curvature)
 
 
-def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3, method="gauss_newton"):
+def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3, method="gauss_newton",
+                          flat_prior_curvature=True):
     """Estimate marginalized errors from the local posterior Hessian.
 
     This is the joint analogue of cup1d's Newton curvature estimate. It uses
@@ -1120,6 +1107,12 @@ def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3, me
         likelihoods are cup1d P1D and/or Vega (BAO); each Gaussian term adds its
         own ``J^T C^-1 J``. ``'finite_difference'`` differentiates the full
         posterior (order ``N**2`` evaluations) and works for any graph.
+    flat_prior_curvature : bool, default=True
+        Add every parameter's flat prior as a Gaussian of the same variance
+        (:data:`cup1d.inference.curvature.FLAT_PRIOR_CURVATURE` in the unit
+        cube), as cup1d's ``estimate_mle_errors`` does. A Gaussian cannot
+        truncate at prior edges; without this, directions the data do not
+        constrain extend beyond their priors and inflate the errors.
 
     Raises
     ------
@@ -1180,6 +1173,9 @@ def estimate_local_errors(model, point, optimization_bounds=None, step=1.e-3, me
                              - checked(center + dj) + f0) / step**2
                 hessian[i, j] = hessian[j, i] = value
     hessian = 0.5 * (hessian + hessian.T)
+    if flat_prior_curvature:
+        from cup1d.inference.curvature import FLAT_PRIOR_CURVATURE
+        hessian = hessian + FLAT_PRIOR_CURVATURE * np.eye(size)
     eigenvalues = np.linalg.eigvalsh(hessian)
     tolerance = np.finfo(float).eps * size * max(1., np.max(np.abs(eigenvalues)))
     if np.min(eigenvalues) < -tolerance:

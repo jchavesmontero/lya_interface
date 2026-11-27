@@ -139,16 +139,15 @@ def test_structured_parameter_rejects_native_collision():
         _flatten_parameter_sections({"P1D": {"a": {"native": "same"}}, "BAO": {"b": {"native": "same"}}})
 
 
-def test_shared_igm_has_no_runtime_cup1d_dependency():
-    root = Path(__file__).parents[1] / "src" / "lya_interface" / "igm"
-    for source in root.glob("*.py"):
-        text = source.read_text()
-        assert "from cup1d" not in text
-        assert "import cup1d" not in text
+def test_igm_is_cup1d_implementation():
+    """lya_interface.igm re-exports cup1d's IGM: one implementation."""
+    import cup1d.models.igm.model_igm as native
+    import lya_interface.igm as shared
+    assert shared.IGM is native.IGM
 
 
 def test_shared_igm_history_preserves_scalar_and_batch_contracts():
-    from lya_interface.igm.mean_flux_class import MeanFlux
+    from lya_interface.igm import MeanFlux
     fid = {"tau_eff_z": np.array([2., 3., 4., 5.]),
            "tau_eff": np.array([.1, .2, .35, .55])}
     options = {"tau_eff_ztype": "interp_lin", "tau_eff_otype": "exp",
