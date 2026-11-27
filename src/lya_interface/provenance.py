@@ -61,22 +61,23 @@ def collect(info, model=None):
         for name, options in info.get(category, {}).items():
             if not options:
                 continue
-            for key in ("native_config", "covariance_asset", "transformation_path"):
+            for key in ("native_config", "covariance_asset"):
                 if options.get(key):
                     result["assets"].append(file_identity(options[key]))
-            if name.endswith("ForestFlowTheory"):
-                import forestflow
-                from forestflow.emulator.p3d_cinn import DEFAULT_EMULATOR_KEY as key
-                if options.get("emulator_label") == "forest_mpg_gp":
+            if name.endswith("P1DEmulatorTheory"):
+                label = options.get("emulator_label", "forest_mpg_cinn")
+                if label == "forest_mpg_gp":
                     from forestflow.emulator.loading import gp_emulator_path
                     gp_file = Path(gp_emulator_path("forest_mpg_gp"))
                     if gp_file.exists():
                         result["assets"].append(file_identity(str(gp_file)))
-                    continue
-                prefix = options.get("model_path") or str(Path(forestflow.__file__).resolve().parents[1] / "data" / "emulator_models" / key)
-                for suffix in (".pt", "_metadata.npy", "_transf.npy", "_manifest.json"):
-                    if Path(prefix + suffix).exists():
-                        result["assets"].append(file_identity(prefix + suffix))
+                elif label == "forest_mpg_cinn":
+                    import forestflow
+                    from forestflow.emulator.p3d_cinn import DEFAULT_EMULATOR_KEY as key
+                    prefix = str(Path(forestflow.__file__).resolve().parents[1] / "data" / "emulator_models" / key)
+                    for suffix in (".pt", "_metadata.npy", "_transf.npy", "_manifest.json"):
+                        if Path(prefix + suffix).exists():
+                            result["assets"].append(file_identity(prefix + suffix))
     # IGM-history files are inputs to the cup1d adapter only.  A Vega native
     # configuration is an INI file, so treating every ``native_config`` as a
     # cup1d YAML both records unrelated assets and eventually calls
@@ -120,10 +121,13 @@ def collect(info, model=None):
             for name, component in model.likelihood.items() if hasattr(component,"registry")}
         result["requests"] = {name: component.backend.get_prediction_request().to_dict()
             for name, component in model.likelihood.items() if hasattr(component,"backend")}
-        result["resolved_bundles"] = {name: dict(input_labels=component.emulator.input_labels,
-            output_labels=component.emulator.output_labels, domain=component.emulator.model_domain,
-            estimator="transformed-space mean Arinyo parameters, then project",
-            latent_assignment="common random block 0 for every redshift/input")
+        result["resolved_bundles"] = {name: dict(label=component.emulator.label,
+            bundle=component.emulator.emulator_label, input_labels=list(component.emulator.emu_params),
+            # cINN latent sampling (cup1d.emulator.factory.Emulator.arinyo:
+            # latent block 0 for every redshift/input); empty for LaCE/GP
+            sampling_options=dict(getattr(component.emulator.model, "sampling_options", {})),
+            prediction=("Arinyo coefficients projected to P1D" if component.emulator.forestflow
+                        else "P1D emulated directly"))
             for name, component in model.theory.items() if hasattr(component,"emulator")}
         result["derived_output_mappings"] = {
             name: component.derived_output_mapping()

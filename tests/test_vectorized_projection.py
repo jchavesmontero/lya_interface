@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 from forestflow.statistics.p1d import P1DIntegrator, P1D_kms
-from lya_interface.projection import project_request
-from lya_interface.contracts import ModelDomainError
+from lya_interface.cup1d_bridge import project_request
+from lya_interface.cup1d_bridge import ModelDomainError
 
 
 @pytest.mark.parametrize("method", ["simpson", "gauss_legendre"])

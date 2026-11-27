@@ -55,7 +55,7 @@ def main():
 
     import matplotlib
     matplotlib.use("Agg")
-    import lya_interface.plotting  # noqa: F401  (house style)
+    import lya_interface.plots  # noqa: F401  (house style)
     from cup1d.postprocessing.posterior import PosteriorPlotter
     from lya_interface.posterior import (chain_prefix, data_k_range, data_redshift_range, load_posterior,
                                          native_models)
@@ -96,7 +96,7 @@ def best_fit_figure(plotter, run_dir, context, prefix, out):
     of the chain sample with the lowest minus log posterior. The model uses
     the run's native cup1d configuration (frozen with the chain).
     """
-    from lya_interface.diagnostics import format_goodness_of_fit
+    from lya_interface.fit_core import format_goodness_of_fit
     from lya_interface.fit import Fit
     from lya_interface.posterior import best_fit_entries, best_point, native_parameter_name
 

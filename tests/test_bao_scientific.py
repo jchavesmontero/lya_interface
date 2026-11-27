@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
-from lya_interface.diagnostics import evaluate_point
+from lya_interface.fit_core import evaluate_point
 
 ROOT = Path(__file__).resolve().parents[1]
 

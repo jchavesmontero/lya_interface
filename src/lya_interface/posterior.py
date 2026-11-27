@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from lya_interface.derived import DERIVED_ALIASES
+from lya_interface.cup1d_bridge import DERIVED_ALIASES
 from lya_interface.names import native_name
 
 CHAIN_FOLDER_PREFIX = "chain_"
@@ -321,7 +321,7 @@ def load_posterior(prefix, burn=0.3, max_rows=1_000_000, unblind=False, label=""
         If the chain folder records no prior bounds.
     """
     from cup1d.postprocessing.posterior import PosteriorSamples
-    from lya_interface.adapters.cup1d_backend import native_blinding
+    from lya_interface.cup1d_bridge import native_blinding
 
     from lya_interface.unit_cube import read_prior_bounds
 
@@ -382,11 +382,10 @@ def native_models(native_config):
         Resolved native settings.
     """
     from cup1d.models.contaminants.model_contaminants import Contaminants
-    from lya_interface.adapters.cup1d_backend import native_configuration
-    from lya_interface.igm import IGM
+    from lya_interface.cup1d_bridge import make_igm, native_configuration
 
     args, igm_names, nuisance = native_configuration(native_config)
-    igm = IGM(free_param_names=igm_names, pars_igm=args.fid_igm)
+    igm = make_igm(args, igm_names)
     contaminants = Contaminants(free_param_names=nuisance, pars_cont=args.fid_cont,
                                 ic_correction=args.ic_correction)
     syst_znodes = {family: np.asarray(args.fid_syst[family + "_znodes"], dtype=float)
@@ -459,12 +458,12 @@ def best_fit_entries(model, point):
     entries : list of cup1d.postprocessing.p1d.P1DBin
         One bin per data set and redshift; ``chi2`` is the marginal block
         chi-squared of that bin and ``dof`` its number of data points.
-    statistics : lya_interface.diagnostics.JointGoodnessOfFit
+    statistics : lya_interface.fit_core.JointGoodnessOfFit
         Correlated chi-squared of the fit.
     """
     from cup1d.likelihood.external import gaussian_residual
     from cup1d.postprocessing.p1d import P1DBin
-    from lya_interface.diagnostics import cup1d_component, evaluate_point, goodness_of_fit
+    from lya_interface.fit_core import cup1d_component, evaluate_point, goodness_of_fit
 
     _, powers = evaluate_point(model, point)
     backend = cup1d_component(model).backend

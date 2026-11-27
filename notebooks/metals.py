@@ -77,11 +77,11 @@ from forestflow.model.arinyo import ArinyoModel
 from forestflow.model.linear import LinearTheoryGrid
 from vega import utils as vega_utils
 from cup1d.models.contaminants.metals.si_kaiser import velocity_offset
-from cup1d.likelihood.external import _quadrature, project_fused
+from cup1d.theory.projection import _quadrature, project_fused
 from lya_interface.fit import Fit
 from lya_interface.initial_conditions import global_ic_point
 from lya_interface.parameters import route
-from lya_interface.diagnostics import cup1d_component, evaluate_point, vega_component
+from lya_interface.fit_core import cup1d_component, evaluate_point, vega_component
 
 ROOT = next(
     (p for p in [Path.cwd(), *Path.cwd().parents]
@@ -145,7 +145,7 @@ for name in METALS:
         point[name] += np.log(METAL_BOOST)  # coefficients are ln|b|
 prediction, nuisance = p1d_state(point)
 snapshot = model.provider.get_result("lya_cosmology")
-forestflow = next(c for c in model.theory.values() if c.__class__.__name__ == "ForestFlowTheory")
+forestflow = next(c for c in model.theory.values() if c.__class__.__name__ == "P1DEmulatorTheory")
 arinyo = forestflow.get_result("forestflow_arinyo")
 group = p1d.backend.request.groups[0]
 
@@ -242,8 +242,7 @@ assert max(r["convergence_max_rel"] for r in rows) < 5e-3, "production quadratur
 # integrand is negligible well before $k_\perp=190$ /Mpc.
 
 # %%
-from cup1d.likelihood.external import (
-    PredictionGroup, PredictionRequest, make_integrator)
+from cup1d.theory.projection import PredictionGroup, PredictionRequest, make_integrator
 
 prediction, nuisance = p1d_state(reference_point)
 arinyo = forestflow.get_result("forestflow_arinyo")

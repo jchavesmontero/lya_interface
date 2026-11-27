@@ -3,341 +3,9 @@
 # Do not edit by hand: change the cup1d YAML and regenerate with
 #   python scripts/config_from_cup1d.py <cup1d_yaml> <this_file>
 # Parameters, bounds and references come from cup1d's Likelihood.free_params;
-# the fixed cosmology and fiducial_M from its fid_cosmo_label. No sampler block:
+# the fixed cosmology and fiducial_M from its fid_cosmo_label; the other component
+# settings from lya_interface.from_cup1d.component_defaults. No sampler block:
 # samplers are added by the notebooks/scripts that run them.
-params: &id001
-  H0: 67.66
-  ombh2: 0.02242
-  omch2: 0.11933
-  mnu: 0.0
-  nnu: 3.044
-  omk: 0.0
-  tau: 0.0
-  nrun: 0.0
-  As:
-    prior:
-      min: 1.279812619106763e-09
-      max: 2.807462822093571e-09
-    ref: 2.105209331337507e-09
-    proposal: 1.5276502029868078e-11
-  ns:
-    prior:
-      min: 0.9119751391786948
-      max: 1.0273810765111007
-    ref: 0.9665
-    proposal: 0.001154059373324059
-  igm_tau_eff_0:
-    prior:
-      min: -0.22092695416564634
-      max: 0.2240260715592276
-    ref: 0.06061514251980532
-    proposal: 0.00444953025724874
-  igm_tau_eff_1:
-    prior:
-      min: -0.22092695416564634
-      max: 0.2240260715592276
-    ref: -0.09411032423580803
-    proposal: 0.00444953025724874
-  igm_tau_eff_2:
-    prior:
-      min: -0.22092695416564634
-      max: 0.2240260715592276
-    ref: -0.08217388183190869
-    proposal: 0.00444953025724874
-  igm_tau_eff_3:
-    prior:
-      min: -0.22092695416564634
-      max: 0.2240260715592276
-    ref: -0.21840285068991022
-    proposal: 0.00444953025724874
-  igm_sigT_kms_0:
-    prior:
-      min: 0.7943149440867925
-      max: 1.2731213973588384
-    ref: 1.2589299181669333
-    proposal: 0.00478806453272046
-  igm_sigT_kms_1:
-    prior:
-      min: 0.7943149440867925
-      max: 1.2731213973588384
-    ref: 0.9250690098731162
-    proposal: 0.00478806453272046
-  igm_sigT_kms_2:
-    prior:
-      min: 0.7943149440867925
-      max: 1.2731213973588384
-    ref: 0.9151934244185241
-    proposal: 0.00478806453272046
-  igm_sigT_kms_3:
-    prior:
-      min: 0.7943149440867925
-      max: 1.2731213973588384
-    ref: 0.9926240734871878
-    proposal: 0.00478806453272046
-  igm_gamma_0:
-    prior:
-      min: 0.7636549003501613
-      max: 1.2648635404244262
-    ref: 1.2628492426814477
-    proposal: 0.005012086400742649
-  igm_gamma_1:
-    prior:
-      min: 0.7636549003501613
-      max: 1.2648635404244262
-    ref: 0.8782826945062463
-    proposal: 0.005012086400742649
-  igm_gamma_2:
-    prior:
-      min: 0.7636549003501613
-      max: 1.2648635404244262
-    ref: 1.2583418543968894
-    proposal: 0.005012086400742649
-  igm_gamma_3:
-    prior:
-      min: 0.7636549003501613
-      max: 1.2648635404244262
-    ref: 0.8092574316844561
-    proposal: 0.005012086400742649
-  igm_kF_kms_0:
-    prior:
-      min: 0.8131443815883004
-      max: 1.2962930152539578
-    ref: 0.8456008637619917
-    proposal: 0.004831486336656574
-  igm_kF_kms_1:
-    prior:
-      min: 0.8131443815883004
-      max: 1.2962930152539578
-    ref: 0.864398885063711
-    proposal: 0.004831486336656574
-  igm_kF_kms_2:
-    prior:
-      min: 0.8131443815883004
-      max: 1.2962930152539578
-    ref: 0.9175962402446913
-    proposal: 0.004831486336656574
-  igm_kF_kms_3:
-    prior:
-      min: 0.8131443815883004
-      max: 1.2962930152539578
-    ref: 1.2925720859090095
-    proposal: 0.004831486336656574
-  p1d_f_Lya_SiIII_0:
-    prior:
-      min: -6.0
-      max: -2.0
-    ref: -4.171616375730998
-    proposal: 0.04
-  p1d_f_Lya_SiIII_1:
-    prior:
-      min: -6.0
-      max: -2.0
-    ref: -3.9961560605151085
-    proposal: 0.04
-  p1d_s_Lya_SiIII_0:
-    prior:
-      min: 2.0
-      max: 7.0
-    ref: 4.902355163107267
-    proposal: 0.05
-  p1d_s_Lya_SiIII_1:
-    prior:
-      min: 2.0
-      max: 7.0
-    ref: 4.897446097305223
-    proposal: 0.05
-  p1d_f_Lya_SiII_0:
-    prior:
-      min: -6.0
-      max: -2.0
-    ref: -3.6521258501351657
-    proposal: 0.04
-  p1d_f_Lya_SiII_1:
-    prior:
-      min: -6.0
-      max: -2.0
-    ref: -4.861901486259131
-    proposal: 0.04
-  p1d_s_Lya_SiII_0:
-    prior:
-      min: 2.0
-      max: 7.0
-    ref: 5.662150877443708
-    proposal: 0.05
-  p1d_s_Lya_SiII_1:
-    prior:
-      min: 2.0
-      max: 7.0
-    ref: 4.148730781783317
-    proposal: 0.05
-  p1d_f_SiIIa_SiIIb_0:
-    prior:
-      min: -3.0
-      max: 3.0
-    ref: 0.4011242083003208
-    proposal: 0.06
-  p1d_f_SiIIa_SiIIb_1:
-    prior:
-      min: -3.0
-      max: 3.0
-    ref: 0.9935096307232634
-    proposal: 0.06
-  p1d_s_SiIIa_SiIIb_0:
-    prior:
-      min: 0.0
-      max: 7.5
-    ref: 4.428088575297688
-    proposal: 0.075
-  p1d_s_SiIIa_SiIIb_1:
-    prior:
-      min: 0.0
-      max: 7.5
-    ref: 5.294547715138533
-    proposal: 0.075
-  p1d_f_SiIIa_SiIII_0:
-    prior:
-      min: -1.0
-      max: 3.0
-    ref: 0.8324433889463148
-    proposal: 0.04
-  p1d_f_SiIIa_SiIII_1:
-    prior:
-      min: -1.0
-      max: 3.0
-    ref: 0.5985929443375606
-    proposal: 0.04
-  p1d_f_SiIIb_SiIII_0:
-    prior:
-      min: -1.0
-      max: 5.0
-    ref: 0.5914679695396825
-    proposal: 0.06
-  p1d_f_SiIIb_SiIII_1:
-    prior:
-      min: -1.0
-      max: 5.0
-    ref: 3.36698046908018
-    proposal: 0.06
-  p1d_HCD_damp1_0:
-    prior:
-      min: -10.0
-      max: -0.03
-    ref: -1.270770763468196
-    proposal: 0.09970000000000001
-  p1d_HCD_damp1_1:
-    prior:
-      min: -10.0
-      max: -0.03
-    ref: -1.2210302611914923
-    proposal: 0.09970000000000001
-  p1d_HCD_damp2_0:
-    prior:
-      min: -10.0
-      max: -1.0
-    ref: -9.179032273494276
-    proposal: 0.09
-  p1d_HCD_damp2_1:
-    prior:
-      min: -10.0
-      max: -1.0
-    ref: -3.16528942573186
-    proposal: 0.09
-  p1d_HCD_damp3_0:
-    prior:
-      min: -10.0
-      max: -1.0
-    ref: -5.104819884736047
-    proposal: 0.09
-  p1d_HCD_damp3_1:
-    prior:
-      min: -10.0
-      max: -1.0
-    ref: -5.503354838200286
-    proposal: 0.09
-  p1d_HCD_damp4_0:
-    prior:
-      min: -10.0
-      max: -1.0
-    ref: -4.701904087483387
-    proposal: 0.09
-  p1d_HCD_damp4_1:
-    prior:
-      min: -10.0
-      max: -1.0
-    ref: -4.536440288117802
-    proposal: 0.09
-  p1d_R_coeff_0:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.009454494990929568
-    proposal: 0.002
-  p1d_R_coeff_1:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.015170008642674745
-    proposal: 0.002
-  p1d_R_coeff_2:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.0016539938079742928
-    proposal: 0.002
-  p1d_R_coeff_3:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: -0.008628566387402453
-    proposal: 0.002
-  p1d_R_coeff_4:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.0018990819810936008
-    proposal: 0.002
-  p1d_R_coeff_5:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.0031325611780701843
-    proposal: 0.002
-  p1d_R_coeff_6:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.01643208226587983
-    proposal: 0.002
-  p1d_R_coeff_7:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.01979715590065924
-    proposal: 0.002
-  p1d_R_coeff_8:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: -0.00916871477137578
-    proposal: 0.002
-  p1d_R_coeff_9:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: -0.015609432832717996
-    proposal: 0.002
-  p1d_R_coeff_10:
-    prior:
-      min: -0.1
-      max: 0.1
-    ref: 0.0028241489742693617
-    proposal: 0.002
-  Delta2star:
-    derived: true
-  nstar:
-    derived: true
-  alphastar:
-    derived: true
 theory:
   camb:
     extra_args:
@@ -354,19 +22,348 @@ theory:
     snapshot_nodes: 4096
     z_star: 3.0
     k_star_ikms: 0.009
-  lya_interface.theory.forestflow.ForestFlowTheory:
+  lya_interface.theory.p1d_emulator.P1DEmulatorTheory:
     stop_at_error: true
-    native_config: ../../cup1d/configs/cm2026/cm2026_base.yaml
-    parameter_definitions: *id001
-    emulator_label: lace_mpg
     realizations: 1000
     seed: 0
     hull_factor: 1.15
+    native_config: cup1d:configs/cm2026/cm2026_base.yaml
+    parameter_definitions: &id001
+      H0: 67.66
+      ombh2: 0.02242
+      omch2: 0.11933
+      mnu: 0.0
+      nnu: 3.044
+      omk: 0.0
+      tau: 0.0
+      nrun: 0.0
+      As:
+        prior:
+          min: 1.2794609006780829e-09
+          max: 2.8066912744485306e-09
+        ref: 2.105209331337507e-09
+        proposal: 1.5272303737704477e-11
+      ns:
+        prior:
+          min: 0.9121555552473973
+          max: 1.0275614925798033
+        ref: 0.9665
+        proposal: 0.00115405937332406
+      igm_tau_eff_0:
+        prior:
+          min: -0.22092695416564634
+          max: 0.2240260715592276
+        ref: 0.06061514251980532
+        proposal: 0.00444953025724874
+      igm_tau_eff_1:
+        prior:
+          min: -0.22092695416564634
+          max: 0.2240260715592276
+        ref: -0.09411032423580803
+        proposal: 0.00444953025724874
+      igm_tau_eff_2:
+        prior:
+          min: -0.22092695416564634
+          max: 0.2240260715592276
+        ref: -0.08217388183190869
+        proposal: 0.00444953025724874
+      igm_tau_eff_3:
+        prior:
+          min: -0.22092695416564634
+          max: 0.2240260715592276
+        ref: -0.21840285068991022
+        proposal: 0.00444953025724874
+      igm_sigT_kms_0:
+        prior:
+          min: 0.7943149440867925
+          max: 1.2731213973588384
+        ref: 1.2589299181669333
+        proposal: 0.00478806453272046
+      igm_sigT_kms_1:
+        prior:
+          min: 0.7943149440867925
+          max: 1.2731213973588384
+        ref: 0.9250690098731162
+        proposal: 0.00478806453272046
+      igm_sigT_kms_2:
+        prior:
+          min: 0.7943149440867925
+          max: 1.2731213973588384
+        ref: 0.9151934244185241
+        proposal: 0.00478806453272046
+      igm_sigT_kms_3:
+        prior:
+          min: 0.7943149440867925
+          max: 1.2731213973588384
+        ref: 0.9926240734871878
+        proposal: 0.00478806453272046
+      igm_gamma_0:
+        prior:
+          min: 0.7636549003501613
+          max: 1.2648635404244262
+        ref: 1.2628492426814477
+        proposal: 0.005012086400742649
+      igm_gamma_1:
+        prior:
+          min: 0.7636549003501613
+          max: 1.2648635404244262
+        ref: 0.8782826945062463
+        proposal: 0.005012086400742649
+      igm_gamma_2:
+        prior:
+          min: 0.7636549003501613
+          max: 1.2648635404244262
+        ref: 1.2583418543968894
+        proposal: 0.005012086400742649
+      igm_gamma_3:
+        prior:
+          min: 0.7636549003501613
+          max: 1.2648635404244262
+        ref: 0.8092574316844561
+        proposal: 0.005012086400742649
+      igm_kF_kms_0:
+        prior:
+          min: 0.8131443815883004
+          max: 1.2962930152539578
+        ref: 0.8456008637619917
+        proposal: 0.004831486336656574
+      igm_kF_kms_1:
+        prior:
+          min: 0.8131443815883004
+          max: 1.2962930152539578
+        ref: 0.864398885063711
+        proposal: 0.004831486336656574
+      igm_kF_kms_2:
+        prior:
+          min: 0.8131443815883004
+          max: 1.2962930152539578
+        ref: 0.9175962402446913
+        proposal: 0.004831486336656574
+      igm_kF_kms_3:
+        prior:
+          min: 0.8131443815883004
+          max: 1.2962930152539578
+        ref: 1.2925720859090095
+        proposal: 0.004831486336656574
+      p1d_f_Lya_SiIII_0:
+        prior:
+          min: -6.0
+          max: -2.0
+        ref: -4.171616375730998
+        proposal: 0.04
+      p1d_f_Lya_SiIII_1:
+        prior:
+          min: -6.0
+          max: -2.0
+        ref: -3.9961560605151085
+        proposal: 0.04
+      p1d_s_Lya_SiIII_0:
+        prior:
+          min: 2.0
+          max: 7.0
+        ref: 4.902355163107267
+        proposal: 0.05
+      p1d_s_Lya_SiIII_1:
+        prior:
+          min: 2.0
+          max: 7.0
+        ref: 4.897446097305223
+        proposal: 0.05
+      p1d_f_Lya_SiII_0:
+        prior:
+          min: -6.0
+          max: -2.0
+        ref: -3.6521258501351657
+        proposal: 0.04
+      p1d_f_Lya_SiII_1:
+        prior:
+          min: -6.0
+          max: -2.0
+        ref: -4.861901486259131
+        proposal: 0.04
+      p1d_s_Lya_SiII_0:
+        prior:
+          min: 2.0
+          max: 7.0
+        ref: 5.662150877443708
+        proposal: 0.05
+      p1d_s_Lya_SiII_1:
+        prior:
+          min: 2.0
+          max: 7.0
+        ref: 4.148730781783317
+        proposal: 0.05
+      p1d_f_SiIIa_SiIIb_0:
+        prior:
+          min: -3.0
+          max: 3.0
+        ref: 0.4011242083003208
+        proposal: 0.06
+      p1d_f_SiIIa_SiIIb_1:
+        prior:
+          min: -3.0
+          max: 3.0
+        ref: 0.9935096307232634
+        proposal: 0.06
+      p1d_s_SiIIa_SiIIb_0:
+        prior:
+          min: 0.0
+          max: 7.5
+        ref: 4.428088575297688
+        proposal: 0.075
+      p1d_s_SiIIa_SiIIb_1:
+        prior:
+          min: 0.0
+          max: 7.5
+        ref: 5.294547715138533
+        proposal: 0.075
+      p1d_f_SiIIa_SiIII_0:
+        prior:
+          min: -1.0
+          max: 3.0
+        ref: 0.8324433889463148
+        proposal: 0.04
+      p1d_f_SiIIa_SiIII_1:
+        prior:
+          min: -1.0
+          max: 3.0
+        ref: 0.5985929443375606
+        proposal: 0.04
+      p1d_f_SiIIb_SiIII_0:
+        prior:
+          min: -1.0
+          max: 5.0
+        ref: 0.5914679695396825
+        proposal: 0.06
+      p1d_f_SiIIb_SiIII_1:
+        prior:
+          min: -1.0
+          max: 5.0
+        ref: 3.36698046908018
+        proposal: 0.06
+      p1d_HCD_damp1_0:
+        prior:
+          min: -10.0
+          max: -0.03
+        ref: -1.270770763468196
+        proposal: 0.09970000000000001
+      p1d_HCD_damp1_1:
+        prior:
+          min: -10.0
+          max: -0.03
+        ref: -1.2210302611914923
+        proposal: 0.09970000000000001
+      p1d_HCD_damp2_0:
+        prior:
+          min: -10.0
+          max: -1.0
+        ref: -9.179032273494276
+        proposal: 0.09
+      p1d_HCD_damp2_1:
+        prior:
+          min: -10.0
+          max: -1.0
+        ref: -3.16528942573186
+        proposal: 0.09
+      p1d_HCD_damp3_0:
+        prior:
+          min: -10.0
+          max: -1.0
+        ref: -5.104819884736047
+        proposal: 0.09
+      p1d_HCD_damp3_1:
+        prior:
+          min: -10.0
+          max: -1.0
+        ref: -5.503354838200286
+        proposal: 0.09
+      p1d_HCD_damp4_0:
+        prior:
+          min: -10.0
+          max: -1.0
+        ref: -4.701904087483387
+        proposal: 0.09
+      p1d_HCD_damp4_1:
+        prior:
+          min: -10.0
+          max: -1.0
+        ref: -4.536440288117802
+        proposal: 0.09
+      p1d_R_coeff_0:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.009454494990929568
+        proposal: 0.002
+      p1d_R_coeff_1:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.015170008642674745
+        proposal: 0.002
+      p1d_R_coeff_2:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.0016539938079742928
+        proposal: 0.002
+      p1d_R_coeff_3:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: -0.008628566387402453
+        proposal: 0.002
+      p1d_R_coeff_4:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.0018990819810936008
+        proposal: 0.002
+      p1d_R_coeff_5:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.0031325611780701843
+        proposal: 0.002
+      p1d_R_coeff_6:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.01643208226587983
+        proposal: 0.002
+      p1d_R_coeff_7:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.01979715590065924
+        proposal: 0.002
+      p1d_R_coeff_8:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: -0.00916871477137578
+        proposal: 0.002
+      p1d_R_coeff_9:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: -0.015609432832717996
+        proposal: 0.002
+      p1d_R_coeff_10:
+        prior:
+          min: -0.1
+          max: 0.1
+        ref: 0.0028241489742693617
+        proposal: 0.002
+      Delta2star:
+        derived: true
+      nstar:
+        derived: true
+      alphastar:
+        derived: true
+    emulator_label: lace_mpg
     enforce_training_hull: false
     cosmology_domain:
-      H0:
-      - 65.0
-      - 70.0
       ombh2:
       - 0.02242
       - 0.02242
@@ -385,14 +382,17 @@ theory:
       nrun:
       - 0.0
       - 0.0
+      H0:
+      - 65.0
+      - 70.0
 likelihood:
   lya_interface.likelihoods.cup1d.Cup1DLikelihood:
     stop_at_error: true
-    native_config: ../../cup1d/configs/cm2026/cm2026_base.yaml
-    parameter_definitions: *id001
-    covariance_asset: ../../LaCE/data/covariance/l1O_cov_CH24_mpgcen_gpr.npy
     blinding_policy: native
     include_logdet: false
+    native_config: cup1d:configs/cm2026/cm2026_base.yaml
+    parameter_definitions: *id001
+    covariance_asset: lace:data/covariance/l1O_cov_CH24_mpgcen_gpr.npy
     fiducial_M:
       2.2: 69.6338462642617
       2.4: 71.3980936237748
@@ -405,3 +405,4 @@ likelihood:
       3.8: 83.37138351608837
       4.0: 84.99620428195092
       4.2: 86.59775991679038
+params: *id001

@@ -164,7 +164,7 @@ class VegaLikelihood(Likelihood):
         """
         from cup1d.models.contaminants.metals.si_kaiser import FAMILIES
         from cup1d.models.contaminants.model_contaminants import Contaminants
-        from lya_interface.adapters.cup1d_backend import native_configuration
+        from lya_interface.cup1d_bridge import native_configuration
         from lya_interface.names import nuisance_public_name
 
         args, _, nuisance = native_configuration(self.metal_model)

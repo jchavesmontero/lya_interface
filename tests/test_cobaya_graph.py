@@ -4,9 +4,9 @@ import pytest
 from cobaya.model import get_model
 from cobaya.theory import Theory
 from lya_interface.theory.lya_cosmology import LyaCosmology
-from lya_interface.theory.forestflow import ForestFlowTheory
+from lya_interface.theory.p1d_emulator import P1DEmulatorTheory
 from lya_interface.likelihoods.cup1d import Cup1DLikelihood
-from lya_interface.contracts import PredictionRequest
+from lya_interface.cup1d_bridge import PredictionRequest
 from test_contracts import backend
 
 
@@ -32,7 +32,9 @@ class LinearFixture(Theory):
         self.calls+=1
     def get_Pk_interpolator(self,**kwargs):
         assert kwargs["nonlinear"] is False
-        assert kwargs["var_pair"]==("delta_nonu","delta_nonu")
+        # CDM+baryons, and total matter for the growth-rate correction
+        # (the same spectrum: no massive neutrinos in this fixture)
+        assert kwargs["var_pair"] in {("delta_nonu","delta_nonu"),("delta_tot","delta_tot")}
         return self.current_state["pk"]
     def get_Hubble(self,z,units="km/s/Mpc"):
         return self.current_state["H"]*(1+np.asarray(z))**1.5
@@ -56,22 +58,26 @@ class Histories:
 
 
 class EmulatorFixture:
-    input_labels=["Delta2_p","n_p","mF","gamma","sigT_Mpc","kF_Mpc"]
-    output_labels=["bias","bias_eta","q1","q2","kvav","av","bv","kp"]
-    kp_iMpc=.7
+    """A ForestFlow-like model (``evaluate_arinyo``), wrapped by cup1d's Emulator."""
+    emu_params=["Delta2_p","n_p","mF","gamma","sigT_Mpc","kF_Mpc"]
+    emulator_label="fixture"
+    kp_Mpc=.7
     zmax=4.6
     kmax_1d_iMpc=6.
-    def evaluate(self,rows,**kwargs):
+    list_sim_cube=[f"mpg_{i}" for i in range(30)]
+    def evaluate_arinyo(self,inputs):
         params=dict(bias=-.15,bias_eta=-.2,q1=.4,q2=0.,kvav=.6,av=.3,bv=1.5,kp=10.)
-        return {name:np.array([value*r["gamma"] if name=="bias" else value for r in rows]) for name,value in params.items()}
+        gamma=np.asarray(inputs["gamma"],dtype=float)
+        return {name:value*gamma if name=="bias" else np.full(gamma.shape,value) for name,value in params.items()}
 
 
 class AlwaysInside:
+    params=EmulatorFixture.emu_params
     def in_hulls(self,points):
         return True
 
 
-class ForestFixture(ForestFlowTheory):
+class ForestFixture(P1DEmulatorTheory):
     def initialize(self):
         from types import SimpleNamespace
         from forestflow.statistics.p1d import P1DIntegrator
@@ -79,16 +85,18 @@ class ForestFixture(ForestFlowTheory):
         self.params={k:None for k in self.mapping}
         histories=Histories()
         self.igm=SimpleNamespace(models={k:histories for k in ("F_model","T_model","P_model")})
-        self.emulator=EmulatorFixture()
+        self.set_emulator(EmulatorFixture())
+        self.metal_moments=False
+        self.n_k=None
         self.integrator=P1DIntegrator(n_k_perp=24)
         self.hull=AlwaysInside()
-        self.domain_labels=self.emulator.input_labels
         self.calls=0
         self.request=None
     def must_provide(self,**requirements):
         if "forestflow_p1d" in requirements:
             self.request=PredictionRequest.from_dict(requirements["forestflow_p1d"])
-        return {"lya_cosmology":{"redshifts":list(self.request.redshifts)}}
+        self.redshifts=self.request.redshifts
+        return {"lya_cosmology":{"redshifts":list(self.redshifts)}}
 
 
 class LikelihoodFixture(Cup1DLikelihood):
@@ -140,7 +148,7 @@ def test_derived_only_does_not_initialize_forestflow():
 
 
 def test_numerical_coverage_is_not_silently_rejected():
-    from lya_interface.contracts import NumericalCoverageError
+    from lya_interface.cup1d_bridge import NumericalCoverageError
     info=dict(params=dict(As=2e-9,ns=.96,H0=70.,mnu=0.,nrun=0.,igm_gamma_0=1.4,p1d_R_coeff_0=0.),
         theory={"linear":{"external":LinearFixture},"snapshot":{"external":LyaCosmology,"kmax_iMpc":50.},"forest":{"external":ForestFixture}},
         likelihood={"data":{"external":LikelihoodFixture}})

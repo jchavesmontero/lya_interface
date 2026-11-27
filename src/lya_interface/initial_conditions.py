@@ -5,13 +5,13 @@ import numpy as np
 from cup1d.utils.ic_files import get_ic_path
 from cup1d.utils.otypes import convert_otype, history_otype, interp_ic_history, legacy_otype
 from cup1d.utils.utils import split_string
-from lya_interface.adapters.cup1d_backend import native_configuration
+from lya_interface.cup1d_bridge import native_configuration
 from lya_interface.names import native_name
 
 
 def _native_args(info):
     """Return the cup1d arguments of the configuration's ForestFlow theory."""
-    forest = next(v for k, v in info["theory"].items() if k.endswith("ForestFlowTheory"))
+    forest = next(v for k, v in info["theory"].items() if k.endswith("P1DEmulatorTheory"))
     return native_configuration(forest["native_config"])[0]
 
 
@@ -249,6 +249,26 @@ def ic_native_values(args, names, ic):
     return values, missing
 
 
+def native_ic_file(args):
+    """Global IC file native cup1d starts from for a configuration.
+
+    The first existing of :func:`cup1d.utils.ic_files.ic_candidates` (the
+    variation's own file, then the baseline of the same data and emulator,
+    then ``file_ic``) that stores a global fit; at-a-time files (per-redshift
+    fits) are skipped with a warning, since only global histories map onto
+    the sampled nodes here.
+    """
+    from cup1d.utils.ic_files import ic_candidates, ic_type_from_filename
+
+    for path in ic_candidates(args):
+        if not path.is_file():
+            continue
+        if ic_type_from_filename(path) == "global":
+            return path
+        warnings.warn(f"skipping the at-a-time IC file {path}: only global fits are supported")
+    return get_ic_path(args.data_label, args.emulator_label, "global")
+
+
 def global_ic_point(info, reference, ic_file=None):
     """Interpolate a cup1d global IC file onto the sampled parameters.
 
@@ -256,13 +276,13 @@ def global_ic_point(info, reference, ic_file=None):
     ----------
     info : dict
         Resolved interface configuration (``load_configuration``). Its
-        ``ForestFlowTheory`` ``native_config`` fixes the data labels, emulator
+        ``P1DEmulatorTheory`` ``native_config`` fixes the data labels, emulator
         and redshift nodes of every coefficient.
     reference : dict
         Sampled parameter values used for entries the IC file does not store
         (``As``, ``ns``, and anything not fitted). Not modified.
     ic_file : path-like, optional
-        IC file. By default ``cup1d/data/ics/{data}_{emulator}_ic_global.npy``.
+        IC file. By default the one native cup1d uses (:func:`native_ic_file`).
 
     Returns
     -------
@@ -292,7 +312,7 @@ def global_ic_point(info, reference, ic_file=None):
     """
     args = _native_args(info)
     if ic_file is None:
-        ic_file = get_ic_path(args.data_label, args.emulator_label, "global")
+        ic_file = native_ic_file(args)
     ic_file = Path(ic_file).expanduser()
     if not ic_file.is_file():
         raise FileNotFoundError(f"Global IC file not found: {ic_file}")

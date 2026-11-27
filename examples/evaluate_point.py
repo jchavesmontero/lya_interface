@@ -7,7 +7,7 @@ from cobaya.model import get_model
 from cobaya.run import run
 from lya_interface.configuration import load_configuration
 from lya_interface.provenance import collect
-from lya_interface.diagnostics import evaluate_point
+from lya_interface.fit_core import evaluate_point
 
 
 def main():

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
-from lya_interface.adapters.cup1d_backend import native_configuration, native_blinding
+from lya_interface.cup1d_bridge import native_configuration, native_blinding
 from test_scientific import unavailable
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +20,7 @@ def test_cm2026_export_matches_native_fiducial_parameters_and_bounds():
     if not weights.is_file():
         unavailable(f"missing native baseline weights {weights}")
     info = load_configuration(ROOT / "examples/cup1d_evaluate.yaml")
-    path = info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]["native_config"]
+    path = info["theory"]["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]["native_config"]
     args, igm, nuisance = native_configuration(path)
     names = set_free_likelihood_parameters(args, args.emulator_label)
     # Native setup is a reference check only, never invoked inside evaluation.
@@ -46,7 +46,7 @@ def test_cm2026_export_matches_native_fiducial_parameters_and_bounds():
 def test_cm2026_native_blinding_and_required_covariance():
     from cup1d.p1ds.factory import set_p1d
     from cup1d.utils.blinding import set_blinding
-    from lya_interface.adapters.cup1d_backend import make_backend
+    from lya_interface.cup1d_bridge import make_backend
     info = load_configuration(ROOT / "examples/cup1d_evaluate.yaml")
     like = info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]
     args, _, _ = native_configuration(like["native_config"])
@@ -67,10 +67,10 @@ def test_cm2026_native_blinding_and_required_covariance():
             point = {k: d["ref"] for k, d in info["params"].items()
                      if isinstance(d, dict) and "prior" in d}
             assert np.isfinite(model.logposterior(point).logpost)
-            # Compare the columnar path against native scalar observation
-            # and rebinning on the actual covariance-enabled DR1 baseline.
+            # The backend's observation model and rebinning against the
+            # native class on the actual covariance-enabled DR1 baseline.
             from cup1d.likelihood.external import ExternalP1DLikelihood
-            from lya_interface.diagnostics import cup1d_component
+            from lya_interface.fit_core import cup1d_component
             from lya_interface.parameters import route
             component = cup1d_component(model)
             prediction = model.provider.get_result("forestflow_p1d")

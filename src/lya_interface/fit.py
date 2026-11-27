@@ -12,11 +12,16 @@ import numpy as np
 from cobaya.model import get_model
 
 from lya_interface.configuration import load_configuration
-from lya_interface.diagnostics import (
-    LocalErrors, PointFit, estimate_local_errors, format_near_prior_bounds, goodness_of_fit,
-    minimize_point, near_prior_bounds, plot_local_triangle, plot_star_ellipse, plot_vega_point,
+from lya_interface.fit_core import (
+    PointFit,
+    format_near_prior_bounds,
+    goodness_of_fit,
+    minimize_point,
+    near_prior_bounds,
     star_values,
 )
+from lya_interface.errors import LocalErrors, estimate_local_errors
+from lya_interface.plots import plot_local_triangle, plot_star_ellipse, plot_vega_point
 from lya_interface.names import current_name, translate_legacy
 from lya_interface.provenance import file_identity
 
@@ -151,7 +156,7 @@ class Fit:
             Physical start of every sampled parameter. Defaults to the restored
             best fit if any, else the references.
         **options
-            Forwarded to :func:`minimize_point` (``max_evals``, ``stall_evals``...).
+            Forwarded to :func:`minimize_point` (``max_evals``, ``neval``, ``chi2_tol``...).
 
         Returns
         -------
@@ -178,7 +183,7 @@ class Fit:
         Returns
         -------
         list of dict
-            As :func:`lya_interface.diagnostics.near_prior_bounds`.
+            As :func:`lya_interface.fit_core.near_prior_bounds`.
         """
         if self.best_fit is None:
             raise ValueError("run minimize() or restore a fit first")

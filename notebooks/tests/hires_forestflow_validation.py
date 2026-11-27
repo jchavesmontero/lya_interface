@@ -143,7 +143,7 @@ gc.collect();
 # %%
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
-from lya_interface.diagnostics import evaluate_point
+from lya_interface.fit_core import evaluate_point
 
 info = load_configuration(INTERFACE_CONFIG)
 model = get_model(info)

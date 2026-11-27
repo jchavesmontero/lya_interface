@@ -5,38 +5,6 @@ from pathlib import Path
 from cobaya.yaml import yaml_load_file
 
 
-def _flatten_parameter_sections(sections):
-    """Translate structured interface parameters into Cobaya's flat namespace.
-
-    ``general`` owns cosmology and shared IGM parameters, ``P1D`` owns only
-    P1D nuisances, and ``BAO`` owns only Vega nuisances. A record can provide
-    ``native`` to select the downstream name; the remaining keys are retained
-    as the Cobaya definition. This intentionally rejects implicit aliases.
-    """
-    if not isinstance(sections, dict) or set(sections) - {"general", "P1D", "BAO"}:
-        raise ValueError("parameters must contain only general, P1D, and BAO sections")
-    flat, mapping = {}, {}
-    for section, values in sections.items():
-        if not isinstance(values, dict):
-            raise ValueError(f"parameters.{section} must be a mapping")
-        for public, record in values.items():
-            if not isinstance(record, dict):
-                record = {"value": record}
-            record = dict(record)
-            native = record.pop("native", public)
-            transform = record.pop("transform", "identity")
-            units = record.pop("units", None)
-            status = record.pop("status", None)
-            if status == "derived" and "prior" in record:
-                raise ValueError(f"derived parameter {public!r} cannot have a prior")
-            if public in flat or native in mapping:
-                raise ValueError(f"ambiguous parameter mapping for {public!r}/{native!r}")
-            flat[public] = record
-            mapping[native] = dict(public=public, section=section,
-                                   transform=transform, units=units, status=status)
-    return flat, mapping
-
-
 def _fix_parameters(info, fixed):
     """Fix sampled parameters at given values, in ``params`` and every component registry.
 
@@ -168,6 +136,44 @@ def portable_interface_base(config_path, folder):
 
 
 NATIVE_CONFIG_FILE = "native_config.yaml"
+# asset paths ``<package>:<path>`` are relative to that package's checkout
+PACKAGE_ROOTS = ("lace", "forestflow", "cup1d")
+
+
+def package_root(name):
+    """Root of the installed checkout of a package (``lace``, ``forestflow``, ``cup1d``)."""
+    import importlib.util
+
+    spec = importlib.util.find_spec(name)
+    if spec is None or spec.origin is None:
+        raise ModuleNotFoundError(name)
+    return Path(spec.origin).resolve().parents[1]
+
+
+def resolve_package_path(value):
+    """``<package>:<path>`` to an absolute path, or ``None`` for any other value."""
+    value = str(value)
+    if value.startswith(CHECKOUT_PREFIX):
+        return checkout_root() / value[len(CHECKOUT_PREFIX):]
+    for name in PACKAGE_ROOTS:
+        if value.startswith(name + ":"):
+            return package_root(name) / value[len(name) + 1:]
+    return None
+
+
+def portable_path(path, folder):
+    """``<package>:<path>`` for a file inside a package checkout (portable
+    between machines), else the path relative to ``folder``."""
+    path = Path(path).resolve()
+    for name in PACKAGE_ROOTS:
+        try:
+            return f"{name}:" + path.relative_to(package_root(name)).as_posix()
+        except (ValueError, ModuleNotFoundError):
+            continue
+    try:
+        return CHECKOUT_PREFIX + path.relative_to(checkout_root()).as_posix()
+    except ValueError:
+        return os.path.relpath(path, folder)
 
 
 def native_config_path(info):
@@ -302,28 +308,9 @@ def load_configuration(path):
                 if name.startswith("lya_interface.") and isinstance(options, dict) and "native_config" in options:
                     options["native_config"] = native
     unit_cube = info.pop("sample_in_unit_cube", False)
-    structured = info.pop("parameters", None)
-    interface_mapping = None
-    p1d_definitions = None
-    if structured is not None:
-        flat, interface_mapping = _flatten_parameter_sections(structured)
-        if "params" in info and info["params"] != flat:
-            raise ValueError("use either flat params or structured parameters, not both")
-        info["params"] = flat
-        info.setdefault("interface_metadata", {})["parameter_mapping"] = interface_mapping
-        sections_by_public = {entry["public"]: entry["section"]
-                              for entry in interface_mapping.values()}
-        p1d_definitions = {name: definition for name, definition in flat.items()
-                           if sections_by_public[name] in {"general", "P1D"}}
     for section in ("theory", "likelihood"):
         for name, options in info.get(section, {}).items():
             if name.startswith("lya_interface."):
-                if interface_mapping is not None and name.endswith(("ForestFlowTheory", "Cup1DLikelihood")):
-                    options["parameter_definitions"] = p1d_definitions
-                if interface_mapping is not None and name.endswith("VegaLikelihood"):
-                    options.setdefault("parameter_mapping", {
-                        entry["public"]: native for native, entry in interface_mapping.items()
-                        if entry["section"] == "BAO"})
                 if name.endswith("VegaLikelihood"):
                     options.setdefault("parameter_definitions", info["params"])
                 if "parameter_definitions" in options and options["parameter_definitions"] != info["params"]:
@@ -331,21 +318,22 @@ def load_configuration(path):
                     subset_matches = (isinstance(definitions, dict)
                                       and all(info["params"].get(key) == value
                                               for key, value in definitions.items()))
-                    if interface_mapping is None and not subset_matches:
+                    if not subset_matches:
                         raise ValueError("component registry and public params definitions differ")
-                for key in ("native_config", "covariance_asset", "model_path", "transformation_path", "metal_model",
-                            "metal_alpha_reference"):
-                    if isinstance(options.get(key), str) and options[key] and not Path(options[key]).is_absolute():
+                for key in ("native_config", "covariance_asset", "metal_model", "metal_alpha_reference"):
+                    packaged = resolve_package_path(options[key]) if isinstance(options.get(key), str) else None
+                    if packaged is not None:
+                        options[key] = str(packaged.resolve())
+                    elif isinstance(options.get(key), str) and options[key] and not Path(options[key]).is_absolute():
                         candidates = [path.parent / options[key], path.parent.parent / options[key]]
                         # Config-relative assets first; repository-relative
                         # paths are retained for directly runnable examples.
-                        suffix = ".pt" if key == "model_path" else ""
                         # A missing calibrated product should still resolve to
                         # its existing asset directory, not a fictitious nested
                         # checkout. Keep the eventual FileNotFoundError exact.
                         fallback = min(candidates, key=lambda p: next(
                             (i for i, parent in enumerate(p.parents) if parent.is_dir()), len(p.parents)))
-                        selected = next((p for p in candidates if Path(str(p)+suffix).exists()), fallback)
+                        selected = next((p for p in candidates if p.exists()), fallback)
                         options[key] = str(selected.resolve())
     if unit_cube:
         _sample_in_unit_cube(info)

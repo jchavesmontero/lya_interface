@@ -32,7 +32,7 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 from pathlib import Path
 from time import perf_counter
 import numpy as np
-import lya_interface.plotting  # noqa: F401  (house matplotlib style)
+import lya_interface.plots  # noqa: F401  (house matplotlib style)
 import matplotlib.pyplot as plt
 from IPython.display import display
 from cobaya.model import get_model
@@ -69,7 +69,7 @@ display(reference)
 # %%
 model = get_model(info)
 cosmology = next(c for c in model.theory.values() if c.__class__.__name__ == "LyaCosmology")
-forestflow = next(c for c in model.theory.values() if c.__class__.__name__ == "ForestFlowTheory")
+forestflow = next(c for c in model.theory.values() if c.__class__.__name__ == "P1DEmulatorTheory")
 
 def evaluate(point):
     start = perf_counter()

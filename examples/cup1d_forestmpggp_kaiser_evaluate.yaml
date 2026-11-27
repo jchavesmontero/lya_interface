@@ -3,25 +3,25 @@
 # instead of the CM2026 silicon templates (free SiII x SiII factor and
 # decorrelation, ln f and ln sigma/km/s with two nodes each).
 # As and ns priors are the native cosmo_prior_nsigma=2 ranges (training mean +- 2 sigma).
-# Fixed cosmology: LaCE/cup1d Planck18_noBAO (Planck 2018 TT,TE,EE+lowE+lensing,
+# Fixed cosmology: LaCE/cup1d Planck18_noBAO_wnu (Planck 2018 TT,TE,EE+lowE+lensing,
 # mnu = 0.06 eV), the cosmology of the Vega DR2 template; As/ns references and
-# bounds exported from cup1d with fid_cosmo_label: Planck18_noBAO.
+# bounds exported from cup1d with fid_cosmo_label: Planck18_noBAO_wnu.
 # Unlike validation_demo.yaml, the calibrated ForestFlow covariance is required.
 params: &definitions
   H0: 67.36
   ombh2: 0.02237
   omch2: 0.12
-  mnu: 0.06  # one massive neutrino (CAMB/LaCE default), as Planck18_noBAO
+  mnu: 0.06  # one massive neutrino (CAMB/LaCE default), as Planck18_noBAO_wnu
   nnu: 3.044  # Native LaCE/CAMB Planck18 default for the supported revision.
   omk: 0.0
   tau: 0.0  # Native LaCE Planck18 reionization setting.
   nrun: 0.0
   As:
-    prior: {min: 1.2859514266888883e-09, max: 2.8216763155391104e-09}
+    prior: {min: 1.285821033931536e-09, max: 2.821390203523133e-09}
     ref: 2.0989031673191437e-9  # exp(3.044) 1e-10
     proposal: 2e-11
   ns:
-    prior: {min: 0.9111361369993737, max: 1.02654207433178}
+    prior: {min: 0.9112043933303039, max: 1.0266103306627101}
     ref: 0.9649
     proposal: 0.001
   igm_tau_eff_0:
@@ -247,7 +247,7 @@ theory:
     snapshot_nodes: 4096
     z_star: 3.0
     k_star_ikms: 0.009
-  lya_interface.theory.forestflow.ForestFlowTheory:
+  lya_interface.theory.p1d_emulator.P1DEmulatorTheory:
     stop_at_error: true
     native_config: examples/native_cm2026_forestmpggp_kaiser.yaml
     parameter_definitions: *definitions
@@ -275,7 +275,7 @@ likelihood:
     covariance_asset: ../ForestFlow/data/covariance/l1O_cov_forest_mpg_gp.npy
     blinding_policy: native
     include_logdet: false
-    # Frozen native Planck18_noBAO M(z) = H(z)/(1+z), km/s/Mpc; used only for error covariance.
+    # Frozen native Planck18_noBAO_wnu M(z) = H(z)/(1+z), km/s/Mpc; used only for error covariance.
     fiducial_M:
       2.2: 69.8826810086643
       2.4: 71.66207515037594

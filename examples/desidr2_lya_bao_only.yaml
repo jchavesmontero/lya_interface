@@ -6,7 +6,7 @@ params:
     proposal: 0.1
   ombh2: 0.02237
   omch2: 0.12
-  mnu: 0.06  # Planck18_noBAO
+  mnu: 0.06  # Planck18_noBAO_wnu
   nnu: 3.044
   omk: 0.0
   tau: 0.0

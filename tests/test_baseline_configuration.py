@@ -4,14 +4,14 @@ import numpy as np
 from cup1d import Args
 from cup1d.utils.utils import get_path_repo
 from lya_interface.configuration import load_configuration
-from lya_interface.adapters.cup1d_backend import native_configuration, registry_for, _serializable
+from lya_interface.cup1d_bridge import native_configuration, registry_for, _serializable
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_cm2026_settings_and_full_parameter_registry():
     info = load_configuration(ROOT / "examples/cup1d_evaluate.yaml")
-    forest = info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]
+    forest = info["theory"]["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     like = info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]
     actual, igm, nuisance = native_configuration(forest["native_config"])
     baseline = Args.from_yaml(Path(get_path_repo("cup1d")) / "configs/cm2026/cm2026_base.yaml", verbose=False)
@@ -21,7 +21,7 @@ def test_cm2026_settings_and_full_parameter_registry():
         assert _serializable(getattr(actual, name)) == _serializable(getattr(baseline, name))
     # Intentional difference: the fiducial cosmology of the Vega DR2 template.
     # The converged numerical settings are cup1d's defaults, inherited as is.
-    assert actual.fid_cosmo_label == "Planck18_noBAO"
+    assert actual.fid_cosmo_label == "Planck18_noBAO_wnu"
     for name in ("k_rebin_factor", "n_k_emu", "cosmo_prior_nsigma"):
         assert getattr(actual, name) == getattr(baseline, name)
     assert (actual.k_rebin_factor, actual.n_k_emu, actual.cosmo_prior_nsigma) == (32, 64, 2.0)

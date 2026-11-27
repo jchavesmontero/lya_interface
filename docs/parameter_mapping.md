@@ -3,17 +3,16 @@
 Each component receives explicit `parameter_definitions` equal to top-level
 Cobaya `params`; YAML anchors avoid divergence. The Python loader rejects
 conflicting copies. Registry entries record public/backend names, owner, units,
-transformation, status, consumer, prior, reference and proposal. Unknown names,
-missing configured coefficients and ambiguous As/logA definitions fail
-initialization. Cobaya additionally rejects unassigned sampled parameters.
+transformation, status, consumer, prior, reference and proposal. Unknown names and
+missing configured coefficients fail initialization. Cobaya additionally rejects unassigned sampled parameters.
 
 | Public name | Backend | Owner/consumer | Meaning |
 |---|---|---|---|
 | As, ns, H0, ombh2, omch2, mnu, nnu, omk, nrun, tau | same | cosmology/CAMB | ordinary CAMB units/conventions |
-| igm_tau_eff_i | tau_eff_i | IGM/ForestFlowTheory | native fiducial optical-depth rescaling coefficient |
-| igm_gamma_i | gamma_i | IGM/ForestFlowTheory | fiducial gamma rescaling coefficient |
-| igm_sigT_kms_i | sigT_kms_i | IGM/ForestFlowTheory | fiducial thermal-history rescaling coefficient, not km/s itself |
-| igm_kF_kms_i | kF_kms_i | IGM/ForestFlowTheory | fiducial pressure-history coefficient, not inverse km/s itself |
+| igm_tau_eff_i | tau_eff_i | IGM/P1DEmulatorTheory | native fiducial optical-depth rescaling coefficient |
+| igm_gamma_i | gamma_i | IGM/P1DEmulatorTheory | fiducial gamma rescaling coefficient |
+| igm_sigT_kms_i | sigT_kms_i | IGM/P1DEmulatorTheory | fiducial thermal-history rescaling coefficient, not km/s itself |
+| igm_kF_kms_i | kF_kms_i | IGM/P1DEmulatorTheory | fiducial pressure-history coefficient, not inverse km/s itself |
 | metal_<native coefficient> | native coefficient | nuisance/Cup1DLikelihood and VegaLikelihood | Kaiser silicon coefficient (`b_`, `beta_`, `sig_`, `f_SiIIxSiII`, `sig_SiIIxSiII`), one parameter shared by P1D and xi3D |
 | p1d_<native coefficient> | native coefficient | nuisance/Cup1DLikelihood | P1D-only metal template, HCD or resolution coefficient |
 | xi3d_<name> | Vega native name (`parameter_mapping`) | VegaLikelihood | xi3D-only Vega nuisance; `ap` and `at` keep their names |
@@ -37,21 +36,6 @@ with zero native free coefficients retain the selected native fixed values. To
 vary one, enable its coefficient count in the native config and add a public
 definition. Native coefficient transformations remain owned by cup1d.
 
-For a log-amplitude prior, replace sampled As with:
-
-```yaml
-logA:
-  prior: {min: 2.9, max: 3.2}
-  ref: 3.047
-  proposal: 0.01
-  drop: true
-As:
-  value: 'lambda logA: 1e-10 * np.exp(logA)'
-```
-
-Do not sample both. Uniform logA and uniform As are different prior measures.
-The registry accepts this explicit exponential transformation.
-
 The likelihood adds no native statistical priors. Native star/Gaussian IGM or
 contaminant priors are rejected until exported explicitly to Cobaya, once each.
 Computing stars does not impose a star prior. Scientific model-domain exclusions
@@ -69,13 +53,3 @@ cup1d, internal sampled coordinates are physical, not newly blinded variables;
 this policy does not make raw sampled-coordinate files safe for public release.
 The unblinded `validation_demo.yaml` remains a separate regression fixture.
 
-## Joint structured configuration
-
-Joint configurations may use `parameters.general`, `parameters.P1D`, and
-`parameters.BAO` instead of flat `params`. The loader converts that form to
-Cobaya's flat namespace and saves explicit public/native/section/transform/
-unit/status records in `interface_metadata.parameter_mapping`. Native aliases
-must be unique across the three sections, and a derived record cannot have a
-sampling prior. General is the sole owner of shared cosmology/IGM parameters;
-P1D and BAO nuisances remain independent even if their names resemble one
-another.

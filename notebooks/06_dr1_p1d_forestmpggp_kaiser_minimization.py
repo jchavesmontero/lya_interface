@@ -22,7 +22,7 @@
 # ForestFlow, cup1d likelihood); cup1d is only the backend underneath, and no
 # native `Analysis` is built.
 #
-# The configuration mirrors `cup1d/configs/desi_dr1_tests/cm2026_base_forestmpggp.yaml`:
+# The configuration mirrors `cup1d/configs/cm2026/cm2026_base_forestmpggp.yaml`:
 # rebinning factor 16 and `As`/`ns` priors spanning the training mean +- 2 sigma.
 # It needs the calibrated covariance `ForestFlow/data/covariance/l1O_cov_forest_mpg_gp.npy`,
 # which is never silently disabled. Native DESI blinding is preserved for the
@@ -58,10 +58,8 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 from lya_interface.fit import Fit
 from lya_interface.initial_conditions import default_ic_path, global_ic_point, save_global_ic
-from lya_interface.diagnostics import (
-    evaluate_point, format_goodness_of_fit,
-    goodness_of_fit, plot_point_with_residuals,
-)
+from lya_interface.fit_core import evaluate_point, format_goodness_of_fit, goodness_of_fit
+from lya_interface.plots import plot_point_with_residuals
 
 ROOT = next(
     (p for p in [Path.cwd(), *Path.cwd().parents]

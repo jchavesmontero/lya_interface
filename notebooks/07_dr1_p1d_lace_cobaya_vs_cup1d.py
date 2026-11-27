@@ -111,7 +111,7 @@ print(f"one evaluation: {(perf_counter() - t0) / 10:.2f} s")
 # %%
 RUN_MINIMIZATION = True
 USE_IC = True
-MAX_EVALS = 6000
+MAX_EVALS = 50000  # over all Nelder-Mead restarts (1000 each, as native)
 initial_point = global_ic_point(fit.info, fit.reference) if USE_IC else dict(cup1d_point)
 if RUN_MINIMIZATION:
     best = fit.minimize(initial_point, max_evals=MAX_EVALS, verbose=True, report_every=200)

@@ -28,7 +28,7 @@ P_ab(k, mu) = b_a b_b (1 + beta_a mu^2)(1 + beta_b mu^2) P_L(k) D_a D_b W_ab
 | HCD | not applied to the metal terms (added outside `C_HCD`) | `model-hcd` only in `[model]`, so not applied to metal pairs |
 
 In P1D the transverse integral turns this into moments (`A_j`, `I_j` of
-`cup1d.likelihood.external.project_metal_moments`) and the line offsets into
+`cup1d.theory.projection.project_metal_moments`) and the line offsets into
 `cos(k dv)`; in Vega the same power is Fourier transformed and the line offsets
 enter through the metal distortion matrices.
 

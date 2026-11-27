@@ -1,7 +1,7 @@
 # CM2026 baseline with the forest_mpg_gp emulator, mirroring
-# cup1d/configs/desi_dr1_tests/cm2026_base_forestmpggp.yaml (sparse overrides on
+# cup1d/configs/cm2026/cm2026_base_forestmpggp.yaml (sparse overrides on
 # the maintained CM2026 defaults). Output and initial-condition entries are
 # omitted: the interface writes nothing and starts from the YAML references.
 # Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
-fid_cosmo_label: Planck18_noBAO
+fid_cosmo_label: Planck18_noBAO_wnu
 emulator_label: forest_mpg_gp

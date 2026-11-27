@@ -344,9 +344,8 @@ def plot_best_fit(fit, paths, title=None, unblind=False, log=print):
     -------
     matplotlib.figure.Figure or None
     """
-    from lya_interface.diagnostics import (
-        format_goodness_of_fit, goodness_of_fit, plot_point_with_residuals,
-    )
+    from lya_interface.fit_core import format_goodness_of_fit, goodness_of_fit
+    from lya_interface.plots import plot_point_with_residuals
 
     if fit.best_fit is None:
         log("no best fit to check")

@@ -44,16 +44,17 @@ import numpy as np
 from IPython.display import display
 from cobaya.model import get_model
 
-import importlib
-import lya_interface.diagnostics as joint_diagnostics
-importlib.reload(joint_diagnostics)  # Pick up edits when this notebook is rerun.
 from lya_interface.configuration import load_configuration
-from lya_interface.derived import star_parameters
-from lya_interface.diagnostics import (
-    estimate_local_errors, evaluate_components, evaluate_point, minimize_point,
-    plot_point, sample_emcee, format_goodness_of_fit, goodness_of_fit,
-    propagate_local_errors,
+from lya_interface.cup1d_bridge import star_parameters
+from lya_interface.fit_core import (
+    evaluate_components,
+    evaluate_point,
+    minimize_point,
+    format_goodness_of_fit,
+    goodness_of_fit,
 )
+from lya_interface.errors import estimate_local_errors, sample_emcee, propagate_local_errors
+from lya_interface.plots import plot_point
 from lya_interface.parameters import route
 
 
@@ -232,7 +233,7 @@ p1d = model.likelihood[P1D_NAME]
 vega = model.likelihood[VEGA_NAME]
 forestflow = next(
     component for component in model.theory.values()
-    if component.__class__.__name__ == "ForestFlowTheory"
+    if component.__class__.__name__ == "P1DEmulatorTheory"
 )
 
 input_values = calculate_shared_theory(model, initial_point)

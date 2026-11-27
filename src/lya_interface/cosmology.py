@@ -4,7 +4,7 @@ import hashlib
 import numpy as np
 from scipy.interpolate import CubicSpline
 from lace.cosmo.base_cosmology import BaseCosmology
-from .contracts import NumericalCoverageError
+from .cup1d_bridge import NumericalCoverageError
 
 
 def readonly(array):

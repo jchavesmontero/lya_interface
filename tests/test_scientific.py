@@ -76,7 +76,7 @@ def test_actual_graph_routing_prior_and_cache_restoration(model):
     post=model.logposterior(p)
     assert np.isfinite(post.logpost)
     cosmology = model.theory["lya_interface.theory.lya_cosmology.LyaCosmology"]
-    forest = model.theory["lya_interface.theory.forestflow.ForestFlowTheory"]
+    forest = model.theory["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     a=model.provider.get_result("lya_cosmology")
     original=model.provider.get_result("forestflow_p1d")
     calls=(cosmology.calls,forest.calls)
@@ -111,11 +111,11 @@ def test_matching_native_inputs_linear_power_growth_and_projection(model,change)
     from lace.cosmo.cosmology import Cosmology
     from forestflow.model.arinyo import ArinyoModel
     from forestflow.model.linear import LinearTheoryGrid
-    from forestflow.statistics.p1d import P1D_kms, P1DIntegrator
+    from forestflow.statistics.p1d import P1D_kms
     p={**point(),**change}
     model.logposterior(p)
     snapshot=model.provider.get_result("lya_cosmology")
-    forest=model.theory["lya_interface.theory.forestflow.ForestFlowTheory"]
+    forest=model.theory["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     pred=model.provider.get_result("forestflow_p1d")
     assert pred["valid"]
     native=Cosmology(cosmo_params_dict=dict(As=p["As"],ns=p["ns"],H0=p["H0"],ombh2=.02242,omch2=.11933,mnu=0.,nnu=3.046,tau=.054,nrun=0.,pivot_scalar=.05), camb_kmax_Mpc=200./1.001)
@@ -129,18 +129,21 @@ def test_matching_native_inputs_linear_power_growth_and_projection(model,change)
         assert snapshot.get_linP_kms_params(z,.009)["Delta2_star"]==pytest.approx(native.get_linP_kms_params(z,.009)["Delta2_star"],rel=3e-4)
     zs=forest.request.redshifts
     for z,row in zip(zs,pred["inputs"]):
-        summaries=native.get_linP_Mpc_params(z,forest.emulator.kp_iMpc)
+        summaries=native.get_linP_Mpc_params(z,forest.kp_iMpc)
         for name in ("Delta2_p","n_p"):
             assert row[name]==pytest.approx(summaries[name],rel=3e-4)
-    # Same estimator and stable latent identity: separate, batched, reordered.
-    inputs=[dict(r) for r in pred["inputs"]]
-    ari=forest.emulator.evaluate(inputs,Nrealizations=forest.realizations,seed=forest.seed,latent_indices=[0]*len(zs))
+    # Same estimator and stable latent identity (cup1d Emulator.arinyo, as
+    # native): separate, batched, reordered.
+    columns={name:np.array([row[name] for row in pred["inputs"]]) for name in forest.input_labels}
+    ari=forest.emulator.arinyo(columns)
     perm=np.arange(len(zs))[::-1]
-    reordered=forest.emulator.evaluate([inputs[i] for i in perm],Nrealizations=forest.realizations,seed=forest.seed,latent_indices=[0]*len(zs))
-    single=forest.emulator.evaluate(inputs[3],Nrealizations=forest.realizations,seed=forest.seed,latent_indices=[0])
+    reordered=forest.emulator.arinyo({name:values[perm] for name,values in columns.items()})
+    single=forest.emulator.arinyo({name:values[3] for name,values in columns.items()})
+    batched=forest.emulator.arinyo({name:np.stack([values,values[perm]]) for name,values in columns.items()})
     for name in ari:
         np.testing.assert_allclose(reordered[name][perm],ari[name],rtol=2e-6,atol=1e-7)
         np.testing.assert_allclose(single[name],ari[name][3],rtol=2e-6,atol=1e-7)
+        np.testing.assert_allclose(batched[name][1][perm],ari[name],rtol=2e-6,atol=1e-7)
     arinyo=forest.get_result("forestflow_arinyo")
     native_model=ArinyoModel(native)
     linear=LinearTheoryGrid(z=np.array(zs),cosmology=native)
@@ -158,30 +161,16 @@ def test_matching_native_inputs_linear_power_growth_and_projection(model,change)
     print("independent LaCE-minus-provider chi2, point",change,":",reference.chi2_data-external.chi2_data)
     assert abs(reference.chi2_data-external.chi2_data)<1.
 
-    # Exercise maintained native cup1d scalar forward path with explicit test
-    # injection of this same snapshot and latent convention. This bypasses
-    # only its obsolete primordial-only cosmology setup, not its kernels.
+    # Native cup1d forward path with the same cup1d Emulator object as the
+    # Cobaya theory (same inputs rule, Arinyo sampling and projection code),
+    # injected with this same snapshot and the configured quadrature. This
+    # bypasses only native cup1d's own cosmology setup, not its kernels.
     from cup1d.theory.theory import Theory as NativeTheory
-    from forestflow.emulator.p1d import P1DEmulator
 
     class InjectedArinyo(ArinyoModel):
-        def P1D_Mpc(self,linear,z,k,params):
+        def P1D_Mpc(self,linear,z,k,params,integrator=None):
             from forestflow.statistics.p1d import P1D_Mpc
             return P1D_Mpc(linear,z,k,self.P3D_Mpc_kpar_kperp,params,integrator=forest.integrator)
-
-    class InjectedEmulator(P1DEmulator):
-        def __init__(self):
-            self.emulator=forest.emulator
-            self.emu_params=self.emulator.input_labels
-            self.emulator_label=forest.emulator.model_key
-            self.model_Arinyo=InjectedArinyo(snapshot)
-            self._prediction_cache=None
-
-        def set_linear_theory(self,z,new_cosmo_params=None):
-            self.linear=LinearTheoryGrid(z=np.unique(z),cosmology=snapshot)
-
-        def _evaluate_emulator(self,calls,**kwargs):
-            return self.emulator.evaluate(calls,Nrealizations=forest.realizations,seed=forest.seed,latent_indices=[0]*len(calls))
 
     class InjectedTheory(NativeTheory):
         def get_cosmology(self,like_params=None):
@@ -190,14 +179,17 @@ def test_matching_native_inputs_linear_power_growth_and_projection(model,change)
         def get_blob(self,cosmo=None):
             return (0.,)*6  # native blob is irrelevant to data likelihood parity
 
-    native_theory=InjectedTheory(InjectedEmulator(),model_igm=forest.igm,model_cont=like.backend.model_cont,
+    # the Cobaya theory builds its own ArinyoModel per point: the emulator's
+    # model_Arinyo is used only by the native path
+    forest.emulator.model.model_Arinyo=InjectedArinyo(snapshot)
+    native_theory=InjectedTheory(forest.emulator,model_igm=forest.igm,model_cont=like.backend.model_cont,
                                 model_syst=like.backend.model_syst,use_hull=False)
     native_theory.star_priors=None
     igm_native=route({k:fixed[k] for k in forest.mapping},forest.mapping)
     for g in forest.request.groups:
         native_inputs,native_M=native_theory.get_emulator_calls(np.array(g.redshifts),like_params=igm_native)
         for i,z in enumerate(g.redshifts):
-            for name in forest.emulator.input_labels:
+            for name in forest.input_labels:
                 assert native_inputs[name][i]==pytest.approx(pred["inputs"][zs.index(z)][name],rel=1e-13)
         native_observed=native_theory.get_p1d_kms(np.array(g.redshifts),[np.array(k) for k in g.k_ikms],
                      like_params={**igm_native,**nuisance},return_blob=False)
@@ -215,7 +207,7 @@ def test_projection_convergence(model,change):
     p={**point(),**change}
     model.logposterior(p)
     snapshot=model.provider.get_result("lya_cosmology")
-    forest=model.theory["lya_interface.theory.forestflow.ForestFlowTheory"]
+    forest=model.theory["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     pred=model.provider.get_result("forestflow_p1d")
     assert pred["valid"]
     ari=forest.get_result("forestflow_arinyo")
@@ -241,7 +233,7 @@ def test_realization_count_sensitivity_is_not_error_covariance(model):
     from forestflow.statistics.p1d import P1D_kms
     model.logposterior(point())
     s=model.provider.get_result("lya_cosmology")
-    forest=model.theory["lya_interface.theory.forestflow.ForestFlowTheory"]
+    forest=model.theory["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     pred=model.provider.get_result("forestflow_p1d")
     inputs=[dict(r) for r in pred["inputs"]]
     zs=forest.request.redshifts
@@ -250,10 +242,15 @@ def test_realization_count_sensitivity_is_not_error_covariance(model):
     like=next(iter(model.likelihood.values()))
     fixed=model.parameterization.input_params()
     nuisance=route({k:fixed[k] for k in like.mapping},like.mapping)
+    columns={name:np.array([row[name] for row in inputs]) for name in forest.input_labels}
     values=[]
     for n in (1000,2000,4000,8000):
-        ari=forest.emulator.evaluate(inputs,Nrealizations=n,seed=forest.seed,latent_indices=[0]*len(zs))
-        rows={z:{k:np.atleast_1d(ari[k])[i] for k in ari} for i,z in enumerate(zs)}
+        # the provider's emulator with n latent realizations (copy: the
+        # provider keeps its own sampling options)
+        emulator=forest.emulator.independent_copy()
+        emulator.model.sampling_options={**forest.emulator.model.sampling_options,"Nrealizations":n}
+        ari=emulator.arinyo(columns)
+        rows={z:{k:ari[k][i] for k in ari} for i,z in enumerate(zs)}
         powers={g.identifier:[P1D_kms(linear,z,np.array(k),arinyo.P3D_Mpc_kpar_kperp,
             s.get_dkms_diMpc(z),rows[z],integrator=forest.integrator) for z,k in zip(g.redshifts,g.k_ikms)] for g in forest.request.groups}
         values.append(like.backend.evaluate_from_p1d(powers,pred["context"],nuisance).chi2_data)
@@ -273,7 +270,7 @@ def test_snapshot_interpolation_resolution(model):
     model.logposterior(point())
     original=model.provider.get_result("lya_cosmology")
     pk=model.provider.get_Pk_interpolator(nonlinear=False,var_pair=("delta_nonu","delta_nonu"))
-    forest=model.theory["lya_interface.theory.forestflow.ForestFlowTheory"]
+    forest=model.theory["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     pred=model.provider.get_result("forestflow_p1d")
     ari=forest.get_result("forestflow_arinyo")
     like=next(iter(model.likelihood.values()))
@@ -322,7 +319,7 @@ def test_noiseless_mock_recovers_injected_nuisance(model):
 def test_cosmology_only_neutrino_growth_and_fit_conventions(mass):
     from lace.cosmo.cosmology import Cosmology
     info=load_configuration(ROOT/"examples/validation_demo.yaml")
-    del info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]
+    del info["theory"]["lya_interface.theory.p1d_emulator.P1DEmulatorTheory"]
     info["params"]={k:v for k,v in info["params"].items() if not k.startswith(("igm_","p1d_"))}
     info["params"]["mnu"]=mass
     info["theory"]["camb"]["extra_args"]["num_massive_neutrinos"]=int(mass>0)

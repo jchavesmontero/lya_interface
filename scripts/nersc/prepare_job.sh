@@ -27,9 +27,12 @@ set -euo pipefail
 # ---------------------------------------------------------------- edit these
 THREADS=1                          # OpenMP threads: thread_scaling.py found no gain from more
 LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
-CONFIG=${CONFIG:-$LYA_INTERFACE/examples/hires_forestflow_evaluate.yaml}   # or sbatch --export=ALL,CONFIG=...
-# run folder, the same as in mcmc_job.sh
-RUN_DIR=${RUN_DIR:-$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc}   # or --export=ALL,RUN_DIR=...
+# CONFIG (required): the interface YAML, e.g.
+#   sbatch --export=ALL,CONFIG=$PWD/examples/dr1_cm2026_base_evaluate.yaml scripts/nersc/prepare_job.sh
+# RUN_DIR (optional): the run folder, the same as in mcmc_job.sh; by default
+# prepare_mcmc.py derives it from the native out_folder of CONFIG.
+CONFIG=${CONFIG:-}
+RUN_DIR=${RUN_DIR:-}
 CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin
 CONDA_ENV=lace                     # environment with the IGMHub packages
 # ---------------------------------------------------------------------------
@@ -42,10 +45,17 @@ export OPENBLAS_NUM_THREADS=$THREADS
 export MKL_NUM_THREADS=$THREADS
 export NUMEXPR_NUM_THREADS=$THREADS
 
+if [ -z "$CONFIG" ]; then
+    echo "set CONFIG: sbatch --export=ALL,CONFIG=<interface yaml>[,RUN_DIR=<folder>] scripts/nersc/prepare_job.sh"
+    exit 1
+fi
 source "$LYA_INTERFACE/scripts/nersc/job_log.sh"
 EXTRA="--force"
 if [ "${REUSE:-0}" = "1" ]; then
     EXTRA=""
 fi
 job_header "prepare run folder; config $CONFIG; ${EXTRA:-reuse saved best fit}"
-"$CONDA_PREFIX/bin/python" "$LYA_INTERFACE/scripts/prepare_mcmc.py" "$CONFIG" --run-dir "$RUN_DIR" $EXTRA
+if [ -n "$RUN_DIR" ]; then
+    EXTRA="$EXTRA --run-dir $RUN_DIR"
+fi
+"$CONDA_PREFIX/bin/python" "$LYA_INTERFACE/scripts/prepare_mcmc.py" "$CONFIG" $EXTRA

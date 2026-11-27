@@ -6,7 +6,7 @@
 # The SiII x SiII amplitude factor and decorrelation are free too (two nodes each).
 # beta_SiIII and beta_SiII are free (one node each).
 # Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
-fid_cosmo_label: Planck18_noBAO
+fid_cosmo_label: Planck18_noBAO_wnu
 emulator_label: forest_mpg_gp
 fid_cont:
   metal_model_type: Kaiser

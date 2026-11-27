@@ -1,3 +1,0 @@
-# Convenience loader entry; the complete, directly Cobaya-readable model is
-# examples/cup1d_evaluate.yaml.
-interface_base: examples/cup1d_evaluate.yaml

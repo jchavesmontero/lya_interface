@@ -1,7 +1,7 @@
 """Cobaya full P1D data likelihood; never adds cup1d statistical priors."""
 import numpy as np
 from cobaya.likelihood import Likelihood
-from lya_interface.adapters.cup1d_backend import make_backend
+from lya_interface.cup1d_bridge import make_backend
 from lya_interface.parameters import route
 
 

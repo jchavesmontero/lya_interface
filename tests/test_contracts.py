@@ -1,13 +1,12 @@
 from types import SimpleNamespace
-from pathlib import Path
 import numpy as np
 import pytest
-from cup1d.likelihood.external import ExternalP1DLikelihood, PredictionContext, PredictionRequest
+from cup1d.likelihood.external import ExternalP1DLikelihood
+from cup1d.theory.projection import PredictionContext, PredictionRequest
 from lya_interface.cosmology import CobayaCosmologySnapshot
-from lya_interface.contracts import NumericalCoverageError
-from lya_interface.derived import star_parameters
+from lya_interface.cup1d_bridge import NumericalCoverageError
+from lya_interface.cup1d_bridge import star_parameters
 from lya_interface.parameters import ParameterRegistry, route
-from lya_interface.configuration import _flatten_parameter_sections
 
 
 class Contaminants:
@@ -118,25 +117,9 @@ def test_registry_errors():
     defs = {"As": {"prior":{"min":1e-9,"max":3e-9}}, "igm_tau_eff_0":0., "p1d_R_coeff_0":0.}
     r = ParameterRegistry(defs,["tau_eff_0"],["R_coeff_0"])
     assert route({"igm_tau_eff_0":.2},r.mapping("IGM")) == {"tau_eff_0":.2}
-    for bad in ({**defs,"garbage":1.}, {k:v for k,v in defs.items() if k!="igm_tau_eff_0"}, {**defs,"logA":{"prior":{"min":2.,"max":4.}}}):
+    for bad in ({**defs,"garbage":1.}, {k:v for k,v in defs.items() if k!="igm_tau_eff_0"}):
         with pytest.raises(ValueError):
             ParameterRegistry(bad,["tau_eff_0"],["R_coeff_0"])
-
-
-def test_structured_parameter_sections_have_explicit_ownership():
-    flat, mapping = _flatten_parameter_sections({
-        "general": {"H0": {"value": 67.0, "units": "km/s/Mpc"}},
-        "P1D": {"p1d_metal": {"native": "metal", "prior": {"min": -1, "max": 1}}},
-        "BAO": {"ap": {"prior": {"min": .8, "max": 1.2}}},
-    })
-    assert set(flat) == {"H0", "p1d_metal", "ap"}
-    assert mapping["metal"]["section"] == "P1D"
-    assert mapping["ap"]["section"] == "BAO"
-
-
-def test_structured_parameter_rejects_native_collision():
-    with pytest.raises(ValueError, match="ambiguous"):
-        _flatten_parameter_sections({"P1D": {"a": {"native": "same"}}, "BAO": {"b": {"native": "same"}}})
 
 
 def test_igm_is_cup1d_implementation():
@@ -163,7 +146,7 @@ def test_shared_igm_history_preserves_scalar_and_batch_contracts():
 
 
 def test_diagnostic_column_names_are_collision_free_for_distinct_floats():
-    from lya_interface.theory.forestflow import diagnostic_column_name
+    from lya_interface.theory.p1d_emulator import diagnostic_column_name
     a = diagnostic_column_name("bias", 2.3)
     b = diagnostic_column_name("bias", np.nextafter(2.3, 3.0))
     assert a != b
@@ -171,41 +154,14 @@ def test_diagnostic_column_names_are_collision_free_for_distinct_floats():
 
 
 def test_derived_output_mapping_has_units_and_exact_redshift_identity():
-    from lya_interface.theory.forestflow import ForestFlowTheory, diagnostic_column_name
-    theory = ForestFlowTheory.__new__(ForestFlowTheory)
+    from lya_interface.theory.p1d_emulator import P1DEmulatorTheory, diagnostic_column_name
+    theory = P1DEmulatorTheory.__new__(P1DEmulatorTheory)
     theory.derived_redshifts = (2.3, np.nextafter(2.3, 3.0))
     mapping = theory.derived_output_mapping()
     first = diagnostic_column_name("T0_K", 2.3)
     second = diagnostic_column_name("T0_K", np.nextafter(2.3, 3.0))
     assert mapping[first] == {"quantity": "T0_K", "redshift": 2.3, "units": "K"}
     assert first != second
-
-
-def test_structured_configuration_routes_component_definitions(tmp_path):
-    from lya_interface.configuration import load_configuration
-    config = tmp_path / "joint.yaml"
-    config.write_text("""
-parameters:
-  general:
-    H0: 67.0
-  P1D:
-    p1d_x: {native: x, value: 0.0}
-  BAO:
-    ap: {native: ap, value: 1.0}
-theory:
-  lya_interface.theory.forestflow.ForestFlowTheory: {}
-likelihood:
-  lya_interface.likelihoods.cup1d.Cup1DLikelihood: {}
-  lya_interface.likelihoods.vega.VegaLikelihood: {}
-""")
-    info = load_configuration(config)
-    forest = info["theory"]["lya_interface.theory.forestflow.ForestFlowTheory"]
-    cup = info["likelihood"]["lya_interface.likelihoods.cup1d.Cup1DLikelihood"]
-    vega = info["likelihood"]["lya_interface.likelihoods.vega.VegaLikelihood"]
-    assert set(forest["parameter_definitions"]) == {"H0", "p1d_x"}
-    assert cup["parameter_definitions"] == forest["parameter_definitions"]
-    assert vega["parameter_mapping"] == {"ap": "ap"}
-    assert vega["parameter_definitions"] == info["params"]
 
 
 def test_projection_analytic_normalization_convergence():

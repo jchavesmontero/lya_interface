@@ -67,19 +67,16 @@ class ParameterRegistry:
         ------
         ValueError
             If names conflict, a definition is unused/missing, derived values
-            are sampled, or the ``logA``/``As`` transformation is inconsistent.
+            are sampled.
         """
         self.entries = {}
         if len(set(igm_names + nuisance_names)) != len(igm_names + nuisance_names):
             raise ValueError("duplicate or conflicting backend coefficient names")
-        aliases = {IGM_PREFIX + n: (n, "IGM", "ForestFlowTheory") for n in igm_names}
+        aliases = {IGM_PREFIX + n: (n, "IGM", "P1DEmulatorTheory") for n in igm_names}
         # Shared Kaiser silicon coefficients are metal_<native>, other nuisances p1d_<native>.
         aliases.update({nuisance_public_name(n): (n, "nuisance", "Cup1DLikelihood") for n in nuisance_names})
         aliases.update({n: (n, "cosmology", "CAMB") for n in COSMOLOGY})
         aliases.update({n: (n, "derived", "LyaCosmology") for n in ("Delta2star", "nstar", "alphastar")})
-        aliases["logA"] = ("As", "cosmology", "CAMB")
-        if "logA" in definitions and "As" in definitions and isinstance(definitions["As"], dict) and "prior" in definitions["As"]:
-            raise ValueError("do not independently sample both logA and As")
         for name, definition in definitions.items():
             if name not in aliases:
                 raise ValueError(f"unknown/unused parameter {name!r}")
@@ -93,15 +90,11 @@ class ParameterRegistry:
             metadata = (backend_metadata or {}).get(native, {})
             settings = definition if isinstance(definition, dict) else {}
             self.entries[name] = Parameter(name, native, owner, metadata.get("units", units),
-                "As = 1e-10 * exp(logA)" if name == "logA" else metadata.get("transformation", "identity"),
+                metadata.get("transformation", "identity"),
                 status, definition, consumer, settings.get("prior"), settings.get("ref"), settings.get("proposal"))
         for name in aliases:
             if name.startswith(CUP1D_PREFIXES) and name not in self.entries:
                 raise ValueError(f"missing explicit parameter definition {name}")
-        if "logA" in definitions:
-            d = definitions.get("As")
-            if not isinstance(d, dict) or d.get("value") != "lambda logA: 1e-10 * np.exp(logA)":
-                raise ValueError("logA requires explicit exponential As transformation")
 
     def mapping(self, owner):
         """Return public-to-backend parameter names for one owner.

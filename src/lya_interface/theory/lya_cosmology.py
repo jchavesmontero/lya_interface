@@ -2,8 +2,17 @@
 import numpy as np
 from cobaya.theory import Theory
 from lya_interface.cosmology import CobayaCosmologySnapshot
-from lya_interface.derived import star_parameters, DERIVED_ALIASES, blind_star_parameters
+from lya_interface.cup1d_bridge import star_parameters, DERIVED_ALIASES, blind_star_parameters
 
+
+
+def _sigma_R(pk, z, radius_Mpc, n_k=4000):
+    """RMS of the linear field in top-hat spheres of radius ``radius_Mpc``."""
+    k = np.geomspace(pk.kmin, pk.kmax, n_k)
+    x = k * radius_Mpc
+    window = 3 * (np.sin(x) - x * np.cos(x)) / x**3
+    integrand = k**3 * pk.P(z, k) * window**2 / (2 * np.pi**2)
+    return np.sqrt(np.trapezoid(integrand, np.log(k)))
 
 class LyaCosmology(Theory):
     """Provide immutable linear-cosmology snapshots and derived star parameters."""
@@ -72,7 +81,7 @@ class LyaCosmology(Theory):
         """
         super().must_provide(**requirements)
         if "lya_blinding" in requirements:
-            from lya_interface.adapters.cup1d_backend import native_blinding
+            from lya_interface.cup1d_bridge import native_blinding
             path = requirements["lya_blinding"]["native_config"]
             if self._blinding_config is not None and self._blinding_config != path:
                 raise ValueError("conflicting native diagnostic blinding configurations")
@@ -82,9 +91,9 @@ class LyaCosmology(Theory):
         if "lya_cosmology" in requirements:
             self._zs.update(requirements["lya_cosmology"].get("redshifts", []))
         zs = sorted(self._zs)
-        return {"Pk_interpolator": {"z": zs, "k_max": self.kmax_iMpc,
-                "nonlinear": False, "vars_pairs": [["delta_nonu", "delta_nonu"]]},
-                "Hubble": {"z": zs}, "fsigma8": {"z": zs}, "sigma8_z": {"z": zs}}
+        return {"Pk_interpolator": {"z": zs, "k_max": self.kmax_iMpc, "nonlinear": False,
+                "vars_pairs": [["delta_nonu", "delta_nonu"], ["delta_tot", "delta_tot"]]},
+                "Hubble": {"z": [0.0] + zs}, "fsigma8": {"z": zs}, "sigma8_z": {"z": zs}}
 
     def get_requirements(self):
         """Request primordial and neutrino input parameters from Cobaya.
@@ -130,7 +139,7 @@ class LyaCosmology(Theory):
         k = np.geomspace(pk.kmin, min(pk.kmax, self.kmax_iMpc), self.snapshot_nodes)
         snapshot = CobayaCosmologySnapshot(zs, k, [pk.P(z, k) for z in zs],
             self.provider.get_Hubble(zs, units="km/s/Mpc"),
-            self.provider.get_fsigma8(zs) / self.provider.get_sigma8_z(zs),
+            self._growth_rate_cb(pk, zs),
             primordial=tuple((name, float(params_values_dict[name])) for name in ("As", "ns", "nrun")),
             mnu=float(params_values_dict["mnu"]))
         state["lya_cosmology"] = snapshot
@@ -140,6 +149,20 @@ class LyaCosmology(Theory):
         state["derived"] = blind_star_parameters(self._blind, stars)
         state["lya_blinding"] = self._blinding_config
         self.calls += 1
+
+    def _growth_rate_cb(self, pk_cb, zs):
+        """Growth rate of CDM+baryons, ``f = d ln D_cb / d ln a``.
+
+        CAMB's ``fsigma8`` uses CDM+baryon velocities while ``sigma8_z`` is
+        total matter, which biases ``f`` high by about ``f_nu`` with massive
+        neutrinos. The ratio ``sigma8_tot / sigma8_cb`` corrects it; both are
+        integrated here from the same interpolators, so the integration
+        accuracy cancels (exactly 1 for ``mnu = 0``). As in LaCE.
+        """
+        pk_tot = self.provider.get_Pk_interpolator(nonlinear=False, var_pair=("delta_tot", "delta_tot"))
+        h = float(np.atleast_1d(self.provider.get_Hubble(0.0, units="km/s/Mpc"))[0]) / 100.0
+        ratio = np.array([_sigma_R(pk_tot, z, 8.0 / h) / _sigma_R(pk_cb, z, 8.0 / h) for z in zs])
+        return self.provider.get_fsigma8(zs) / self.provider.get_sigma8_z(zs) * ratio
 
     def get_lya_cosmology(self):
         """Return the current immutable Cobaya cosmology snapshot.

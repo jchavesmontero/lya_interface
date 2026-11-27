@@ -5,7 +5,7 @@ CAMB (cosmological parameters)
   ↓ linear delta_nonu P(k,z), H(z), fsigma8(z), sigma8(z)
 LyaCosmology → immutable snapshot + Delta2star/nstar/alphastar
   ↓ snapshot                  ↑ no IGM or nuisance dependencies
-ForestFlowTheory ← igm_* → interface-owned IGM histories
+P1DEmulatorTheory ← igm_* → interface-owned IGM histories
   ↓ deterministic mean Arinyo + uncontaminated ragged P1D
 Cup1DLikelihood ← p1d_* → native observation model → rebin → covariance
   ↓ data log likelihood only
@@ -65,7 +65,7 @@ importable with only NumPy, SciPy, and LaCE. cup1d retains its own standalone
 IGM implementation by design; a scientific parity test compares the selected
 CM2026 histories at representative redshifts.
 
-Set `derived_redshifts` on `ForestFlowTheory` to save scalar shared diagnostics
+Set `derived_redshifts` on `P1DEmulatorTheory` to save scalar shared diagnostics
 at those exact redshifts. Names use the exact floating-point hexadecimal
 redshift encoding, not rounded decimals, and `derived_output_mapping()` records
 each column's quantity, redshift, and units. The outputs include bias,

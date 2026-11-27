@@ -4,7 +4,7 @@ Cobaya's MCMC proposes in the sampled parameters' own units, and checks the
 proposal covariance (``np.linalg.eigvals``) in those units. With ``As ~ 1e-9``
 next to order-one coefficients, the covariance of the physical parameters is
 numerically singular even when it is positive definite. Native cup1d (and
-:func:`lya_interface.diagnostics.minimize_point`) map every parameter to
+:func:`lya_interface.fit_core.minimize_point`) map every parameter to
 ``[0, 1]`` instead; this module does the same for Cobaya.
 
 Every sampled parameter ``x`` with a flat prior ``[min, max]`` is replaced by

@@ -40,7 +40,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
-from lya_interface.diagnostics import cup1d_component
+from lya_interface.fit_core import cup1d_component
 
 # Works when Jupyter starts in the repository or its notebooks directory.
 candidates = [Path.cwd(), *Path.cwd().parents]
@@ -168,7 +168,7 @@ display({
 })
 # Arinyo coefficients are a diagnostic, not a likelihood requirement.
 # Read them from the theory component; the provider only routes requested products.
-forestflow = next(c for c in model.theory.values() if c.__class__.__name__ == "ForestFlowTheory")
+forestflow = next(c for c in model.theory.values() if c.__class__.__name__ == "P1DEmulatorTheory")
 arinyo = forestflow.get_result("forestflow_arinyo")
 display({"Arinyo_at_first_redshift": dict(arinyo[request.redshifts[0]])})
 
@@ -183,7 +183,7 @@ display({"Arinyo_at_first_redshift": dict(arinyo[request.redshifts[0]])})
 # separately through the total data log-likelihood. No minimization is run.
 
 # %%
-from lya_interface.diagnostics import evaluate_point
+from lya_interface.fit_core import evaluate_point
 
 parameter_values = dict(reference)
 # Example: parameter_values["igm_tau_eff_0"] = 0.01
@@ -212,7 +212,8 @@ print(f"10 likelihood evaluations: {time.perf_counter() - start:.3f} s")
 # These panels reuse cup1d's maintained P1D renderer. Models include contaminants/resolution and rebinning onto the data bins. Error bars show marginal diagonal errors; the figure title reports the full correlated joint chi². Per-redshift diagnostic chi² values need not sum to it.
 
 # %%
-from lya_interface.diagnostics import plot_point, minimize_point
+from lya_interface.fit_core import minimize_point
+from lya_interface.plots import plot_point
 
 initial_point = dict(reference)
 fig, axes = plot_point(model, initial_point, title="CM2026 + ForestFlow: initial point")

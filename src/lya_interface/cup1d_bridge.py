@@ -1,17 +1,53 @@
-"""Static native configuration loading; deliberately no Analysis or emulator."""
+"""lya_interface's bridge to cup1d: native configuration, observation backend,
+P1D projection, star parameters and the failure classes.
+
+Everything the Cobaya components need from a native cup1d YAML is built here
+(no ``Analysis``, no emulator): the resolved settings and coefficient ownership
+(:func:`native_configuration`, :func:`registry_for`), the IGM histories
+(:func:`make_igm`), the static likelihood backend (:func:`make_backend`), the
+blinding offsets (:func:`native_blinding`), the projection of Arinyo
+coefficients to P1D (:func:`project_request`) and the star parameters
+(:func:`star_parameters`). The prediction contracts are cup1d's, re-exported.
+"""
 from pathlib import Path
+
 import numpy as np
 from cup1d import Args
+from cup1d.likelihood.external import ExternalP1DLikelihood
 from cup1d.likelihood.parameters import set_free_likelihood_parameters
 from cup1d.models.contaminants.model_contaminants import Contaminants
 from cup1d.models.contaminants.model_systematics import Systematics
+from cup1d.p1ds.factory import is_synthetic_data_label, set_p1d
+from cup1d.theory.projection import (PredictionContext, PredictionGroup,  # noqa: F401  (re-exported)
+                                     PredictionRequest, fingerprint)
 from lya_interface.igm import IGM
-from cup1d.p1ds.factory import set_p1d, is_synthetic_data_label
-from lya_interface.adapters.vectorized_backend import VectorizedP1DLikelihood
 from lya_interface.parameters import ParameterRegistry
 from lya_interface.provenance import file_identity
-from cup1d.likelihood.external import fingerprint
 
+# public star-parameter names to native (LaCE/cup1d) names; LaCE's 100 log
+# nodes include the endpoints of the fit window
+DERIVED_ALIASES = {"Delta2star": "Delta2_star", "nstar": "n_star", "alphastar": "alpha_star"}
+
+
+class ModelDomainError(ValueError):
+    """Signal that a sampled point lies outside the admitted physical model domain.
+
+    Likelihood code may convert this exception into a rejected point because
+    the requested prediction is scientifically unsupported rather than a
+    numerical-coverage failure.
+    """
+
+
+class NumericalCoverageError(ValueError):
+    """Signal insufficient configured numerical coverage for a valid point.
+
+    Unlike :class:`ModelDomainError`, this exception identifies a configuration
+    error (for example an inadequate linear-power range) and must not be
+    silently converted into a likelihood rejection.
+    """
+
+
+# ------------------------------------------------------- native configuration
 
 def _serializable(value):
     """Convert NumPy containers recursively to fingerprintable Python values.
@@ -81,17 +117,26 @@ def registry_for(args, definitions, igm, nuisance):
     return ParameterRegistry(definitions, igm, nuisance, backend_metadata=metadata)
 
 
-def make_igm(path, definitions):
-    """Construct native cup1d IGM histories and their public registry.
+def make_igm(args, igm_names):
+    """Native cup1d IGM histories of a resolved configuration.
+
+    The one construction used by the Cobaya theory
+    (:class:`lya_interface.theory.p1d_emulator.P1DEmulatorTheory`) and the
+    chain figures (:func:`lya_interface.posterior.native_models`).
+
+    Parameters
+    ----------
+    args : cup1d.Args
+        Resolved native settings (:func:`native_configuration`).
+    igm_names : list of str
+        Native free IGM coefficients (:func:`native_configuration`).
 
     Returns
     -------
-    IGM, ParameterRegistry
-        Static IGM model and ownership registry.
+    lya_interface.igm.IGM
+        Static IGM model.
     """
-    args, igm, nuisance = native_configuration(path)
-    registry = registry_for(args, definitions, igm, nuisance)
-    return IGM(free_param_names=igm, pars_igm=args.fid_igm), registry
+    return IGM(free_param_names=igm_names, pars_igm=args.fid_igm)
 
 
 def native_blinding(path):
@@ -115,7 +160,7 @@ def native_blinding(path):
 
 def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
                  include_logdet=False, blinding_policy="reject"):
-    """Construct static vectorized cup1d observation/covariance backend.
+    """Construct the static cup1d observation/covariance backend.
 
     Parameters
     ----------
@@ -134,7 +179,7 @@ def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
 
     Returns
     -------
-    VectorizedP1DLikelihood, ParameterRegistry
+    ExternalP1DLikelihood, ParameterRegistry
         Static observation backend and public ownership registry.
 
     Raises
@@ -179,7 +224,7 @@ def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
         data={key: dict(z=d.z, k=[k.tolist() for k in d.k_kms], power=[p.tolist() for p in d.Pk_kms],
                        covariance=[c.tolist() for c in d.cov_Pk_kms],
                        full_covariance=None if d.full_cov_Pk_kms is None else d.full_cov_Pk_kms.tolist()) for key,d in data.items()})))
-    backend = VectorizedP1DLikelihood(data,
+    backend = ExternalP1DLikelihood(data,
         Contaminants(free_param_names=nuisance, pars_cont=args.fid_cont, ic_correction=args.ic_correction),
         Systematics(free_param_names=nuisance, pars_syst=args.fid_syst),
         cov_factor=args.cov_factor, emulator_covariance=error,
@@ -188,3 +233,114 @@ def make_backend(path, definitions, covariance_asset=None, fiducial_M=None,
         include_logdet=include_logdet, syst_data_labels=syst_data_labels,
         shared_k_grid=shared_k_grid)
     return backend, registry
+
+
+# ----------------------------------------------------------------- projection
+def project_request(request, snapshot, model, linear, arinyo, integrator, kmax_iMpc,
+                    moments=False, n_k=None):
+    """
+    Project unique (z, k) requests together, preserving ragged output grids.
+
+    Parameters
+    ----------
+    request : PredictionRequest
+        Dataset groups with redshifts and ragged wavenumber grids in s/km.
+    snapshot : CobayaCosmologySnapshot
+        Immutable linear power and velocity conversions for the current point.
+    model : forestflow.model.arinyo.ArinyoModel
+        Native analytic flux-power model.
+    linear : forestflow.model.linear.LinearTheoryGrid
+        Linear-theory grid associated with the same snapshot.
+    arinyo : mapping
+        Redshift-indexed dictionaries of physical Arinyo coefficients.
+    integrator : forestflow.statistics.p1d.P1DIntegrator
+        Native transverse quadrature and integration geometry.
+    kmax_iMpc : float
+        Maximum admitted parallel wavenumber in inverse Mpc.
+    moments : bool, default=False
+        Also return the Kaiser metal moments, from the same single pass.
+    n_k : int, optional
+        Project on ``n_k`` log-spaced k per row and interpolate, as cup1d's
+        ``n_k_emu`` (``cup1d.theory.projection.project_fused``).
+
+    Returns
+    -------
+    mapping or tuple
+        Immutable dataset-indexed tuples of P1D arrays in km/s, retaining
+        the requested redshift ordering and individual grid lengths; with
+        ``moments``, the pair ``(p1d, metal_moments)``.
+
+    Raises
+    ------
+    ModelDomainError
+        If parallel wavenumbers exceed the trained P1D coverage.
+    FloatingPointError
+        If the projected power is non-finite or non-positive.
+
+    Notes
+    -----
+    Padding repeats each row's last valid k, never zero or an out-of-range
+    sentinel. It is removed before returning immutable provider products.
+    The single native P1D projection integrates only along the transverse
+    axis; parameter arrays have explicit singleton k and transverse axes.
+    """
+    from cup1d.theory.projection import project_fused
+    try:
+        powers, metal_moments = project_fused(request, snapshot, arinyo,
+                                              kmax_iMpc=kmax_iMpc, integrator=integrator,
+                                              model=model, linear=linear,
+                                              moments=moments, n_k=n_k)
+        return (powers, metal_moments) if moments else powers
+    except NumericalCoverageError:
+        # A provider-coverage failure is distinct from a rejected emulator
+        # point and must remain visible to callers instead of being converted
+        # to a likelihood-domain rejection.
+        raise
+    except ValueError as error:
+        raise ModelDomainError(str(error)) from error
+
+
+# ------------------------------------------------------------ star parameters
+def blind_star_parameters(blinding, stars):
+    """Star parameters in public names with the native blinding offsets added.
+
+    Parameters
+    ----------
+    blinding : cup1d.utils.blinding.Blinding
+        Native offsets (:func:`native_blinding`).
+    stars : mapping
+        Values keyed by public names (``Delta2star``, ``nstar``, ``alphastar``).
+
+    Returns
+    -------
+    dict
+        The same keys, blinded through ``blinding.blind`` (cup1d's offsets
+        and conventions; no offsets are added here).
+    """
+    native = blinding.blind({DERIVED_ALIASES[name]: value for name, value in stars.items()})
+    return {name: native[DERIVED_ALIASES[name]] for name in stars}
+
+
+def star_parameters(snapshot, z_star=3., k_star_ikms=.009):
+    """Compute public linear-power star parameters from a snapshot.
+
+    Parameters
+    ----------
+    snapshot : lya_interface.cosmology.CobayaCosmologySnapshot
+        Immutable point-specific cosmology.
+    z_star : float, default=3.0
+        Pivot redshift.
+    k_star_ikms : float, default=0.009
+        Velocity-space pivot wavenumber in s/km.
+
+    Returns
+    -------
+    dict
+        Public linear ``bc`` power summaries at ``(z_star, k_star_ikms)``:
+        ``Delta2star`` is ``k**3 P(k)/(2*pi**2)``, ``nstar`` is the local
+        logarithmic slope, and ``alphastar`` is the running returned by
+        LaCE's finite-window quadratic log-power fit. These are not literal
+        point derivatives.
+    """
+    native = snapshot.get_linP_kms_params(z_star, k_star_ikms)
+    return {public: native[backend] for public, backend in DERIVED_ALIASES.items()}

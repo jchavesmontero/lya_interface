@@ -6,7 +6,12 @@ from cobaya.component import get_component_class
 from cobaya.likelihood import Likelihood
 from cobaya.model import get_model
 from lya_interface.configuration import load_configuration
-from lya_interface.diagnostics import evaluate_point, evaluate_components, cup1d_component, minimize_point
+from lya_interface.fit_core import (
+    evaluate_point,
+    evaluate_components,
+    cup1d_component,
+    minimize_point,
+)
 from test_diagnostics import configuration
 
 ROOT = Path(__file__).resolve().parents[1]

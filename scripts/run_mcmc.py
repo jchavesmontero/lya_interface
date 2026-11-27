@@ -309,6 +309,46 @@ def chain_folders(run_dir):
     return sorted(folders, key=lambda f: int(f.name[len(CHAIN_PREFIX):]))
 
 
+INTERFACE_FILE = "interface.yaml"
+
+
+def freeze_interface_base(base_path, folder, number):
+    """Copy an interface configuration into a chain folder.
+
+    Asset paths relative to the original file become ``<package>:<path>`` (or
+    absolute outside the checkouts), so the copy works from the chain folder
+    and on other machines. A base that overlays yet another configuration is
+    not frozen (the chain keeps pointing at it).
+
+    Returns
+    -------
+    str
+        The ``interface_base`` entry of the chain YAML.
+    """
+    import yaml
+    from lya_interface.configuration import portable_path, resolve_package_path
+
+    base_path = Path(base_path).resolve()
+    base = yaml.safe_load(base_path.read_text())
+    if "interface_base" in base:
+        print(f"{base_path} overlays another configuration: not frozen in chain {number}")
+        return str(base_path)
+    for section in ("theory", "likelihood"):
+        for name, options in base.get(section, {}).items():
+            if not (name.startswith("lya_interface.") and isinstance(options, dict)):
+                continue
+            for key in ("native_config", "covariance_asset", "model_path", "transformation_path",
+                        "metal_model", "metal_alpha_reference"):
+                value = options.get(key)
+                if not isinstance(value, str) or not value or resolve_package_path(value) is not None:
+                    continue
+                path = Path(value)
+                options[key] = portable_path(path if path.is_absolute() else base_path.parent / path, folder)
+    (Path(folder) / INTERFACE_FILE).write_text(
+        f"# Chain {number}: frozen copy of {base_path}\n" + yaml.safe_dump(base, sort_keys=False))
+    return INTERFACE_FILE
+
+
 def new_chain(production_yaml):
     """Create the next ``chain_<n>`` next to a production YAML and freeze its inputs there.
 
@@ -338,7 +378,8 @@ def new_chain(production_yaml):
         ``REUSE=1`` in the Slurm job).
     """
     import yaml
-    from lya_interface.configuration import NATIVE_CONFIG_FILE, freeze_native_config, load_configuration
+    from lya_interface.configuration import (NATIVE_CONFIG_FILE, freeze_native_config, load_configuration,
+                                             resolve_interface_base)
     from lya_interface.mcmc_setup import read_covmat, write_covmat
     from lya_interface.unit_cube import (CUBE_SUFFIX, bounds_from_unit_cube_params, covariance_from_unit_cube,
                                          covariance_to_unit_cube, read_prior_bounds, write_prior_bounds)
@@ -373,8 +414,15 @@ def new_chain(production_yaml):
     if bounds:
         write_prior_bounds(folder, bounds, note=f"of chain {number} (mcmc.*.txt, mcmc.covmat, {covmat})")
     # complete native cup1d settings (and so the fiducial cosmology), frozen
-    if freeze_native_config(resolved, folder, note=f"for chain {number}") is not None:
+    native_frozen = freeze_native_config(resolved, folder, note=f"for chain {number}") is not None
+    if native_frozen:
         info["native_config"] = NATIVE_CONFIG_FILE
+    # and the interface configuration it overlays (CAMB settings, fixed
+    # cosmology, fiducial M(z), covariance asset): regenerating the example
+    # later does not change this chain
+    if "interface_base" in info:
+        info["interface_base"] = freeze_interface_base(
+            resolve_interface_base(info["interface_base"], run_dir), folder, number)
     (folder / production_yaml.name).write_text(
         f"# Chain {number}: frozen copy of {production_yaml.name} (and its proposal covariance)\n"
         "# made when the chain was created; the run and its resumes read this file.\n"

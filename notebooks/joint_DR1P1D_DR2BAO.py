@@ -81,9 +81,8 @@ from IPython.display import display
 from lya_interface.fit import Fit
 from lya_interface.initial_conditions import default_ic_path, global_ic_point
 from lya_interface.names import translate_legacy
-from lya_interface.diagnostics import (
-    format_goodness_of_fit, goodness_of_fit, plot_point_with_residuals, vega_component,
-)
+from lya_interface.fit_core import format_goodness_of_fit, goodness_of_fit, vega_component
+from lya_interface.plots import plot_point_with_residuals
 
 # Metal model shared by P1D and Lya x Lya: "kaiser_fixed_beta", "kaiser_free_beta"
 # or "templates" (CM2026 templates in P1D, free Vega silicon biases).

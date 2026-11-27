@@ -354,7 +354,7 @@ theory:
     snapshot_nodes: 4096
     z_star: 3.0
     k_star_ikms: 0.009
-  lya_interface.theory.forestflow.ForestFlowTheory:
+  lya_interface.theory.p1d_emulator.P1DEmulatorTheory:
     stop_at_error: true
     native_config: ../../cup1d/configs/hires/hires_forestflow.yaml
     parameter_definitions: *id001

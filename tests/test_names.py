@@ -30,7 +30,7 @@ def test_legacy_names_are_translated():
 
 def test_near_prior_bounds_reports_flat_and_truncated_edges():
     from cobaya.model import get_model
-    from lya_interface.diagnostics import format_near_prior_bounds, near_prior_bounds
+    from lya_interface.fit_core import format_near_prior_bounds, near_prior_bounds
 
     model = get_model({"likelihood": {"one": lambda a, b, c: 0}, "params": {
         "a": {"prior": {"min": 0, "max": 1}},

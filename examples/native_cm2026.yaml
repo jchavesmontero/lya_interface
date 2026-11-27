@@ -1,6 +1,6 @@
-# Inherit cup1d's CM2026 baseline; the fiducial cosmology is Planck18_noBAO,
+# Inherit cup1d's CM2026 baseline; the fiducial cosmology is Planck18_noBAO_wnu,
 # the cosmology of the Vega DR2 template, instead of CM2026's Planck18.
 # Args.from_yaml resolves the maintained CM2026 defaults for sparse overrides.
 # Fiducial cosmology of the Vega DR2 template (Planck 2018 without BAO, mnu=0.06).
-fid_cosmo_label: Planck18_noBAO
+fid_cosmo_label: Planck18_noBAO_wnu
 emulator_label: forest_mpg_cinn

@@ -43,7 +43,7 @@ parent directory first.
 the supplied Lyα Vega configuration. It exercises Vega in native-template mode
 with `chi2(include_priors=False)` and migrates its Gaussian priors to Cobaya
 once. It is not a ForestFlow-coupled scientific fit. Coupled mode requires a
-ForestFlowTheory configuration, `small scale nl = forestflow` in the Vega data
+P1DEmulatorTheory configuration, `small scale nl = forestflow` in the Vega data
 INI, a documented fixed template `h` (the supplied template has H0=67.36), and
 the fixed-template/effective-redshift/zero-cross-covariance assumptions stated
 in the architecture document.

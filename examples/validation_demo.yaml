@@ -9,11 +9,11 @@ params: &definitions
   tau: 0.054
   nrun: 0.0
   As:
-    prior: {min: 1.9e-9, max: 2.3e-9}
+    prior: {min: 1.2794609006780829e-09, max: 2.8066912744485306e-09}
     ref: 2.105209331337507e-9
     proposal: 2.0e-11
   ns:
-    prior: {min: 0.95, max: 0.98}
+    prior: {min: 0.9121555552473973, max: 1.0275614925798033}
     ref: 0.9665
     proposal: 0.001
   igm_tau_eff_0:
@@ -47,14 +47,14 @@ theory:
     snapshot_nodes: 4096
     z_star: 3.0
     k_star_ikms: 0.009
-  lya_interface.theory.forestflow.ForestFlowTheory:
+  lya_interface.theory.p1d_emulator.P1DEmulatorTheory:
     stop_at_error: true
     native_config: examples/native_demo.yaml
     parameter_definitions: *definitions
     emulator_label: forest_mpg_cinn
     realizations: 1000
     seed: 0
-    hull_factor: 1.0
+    hull_margin: 0.0
     cosmology_domain:
       H0: [65.0, 70.0]
       ombh2: [0.02242, 0.02242]

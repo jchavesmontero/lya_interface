@@ -45,8 +45,9 @@ set -euo pipefail
 # ---------------------------------------------------------------- edit these
 THREADS=1                          # OpenMP threads per chain
 LYA_INTERFACE=/global/cfs/cdirs/desicollab/users/jjchaves/packages/lya_interface
-# holds cobaya_mcmc.yaml, in the data folder
-RUN_DIR=${RUN_DIR:-$CFS/data/DESIY1_QMLE3__Karacayli2022/global_opt/forest_mpg_gp/cobaya_mcmc}   # or --export=ALL,RUN_DIR=...
+# RUN_DIR (required): the folder prepare_job.sh wrote, holding cobaya_mcmc.yaml
+#   sbatch --export=ALL,RUN_DIR=<folder> scripts/nersc/mcmc_job.sh
+RUN_DIR=${RUN_DIR:-}
 MAX_JOBS=${MAX_JOBS:-3}            # jobs in the self-resubmitting chain (mcmc_job_test.sh: 1)
 TEST_SAMPLES=1000                  # accepted points per chain in MODE=test (~10 min)
 CONDA_BIN=/global/homes/j/jjchaves/miniconda3/bin
@@ -61,6 +62,10 @@ activate_environment() {
 # ---------------------------------------------------------------------------
 
 MODE=${MODE:-production}
+if [ -z "$RUN_DIR" ]; then
+    echo "set RUN_DIR: sbatch --export=ALL,RUN_DIR=<folder with cobaya_mcmc.yaml> scripts/nersc/mcmc_job.sh"
+    exit 1
+fi
 activate_environment
 export OMP_NUM_THREADS=$THREADS
 export OPENBLAS_NUM_THREADS=$THREADS
@@ -123,7 +128,7 @@ fi
 NEXT=""
 if [ "$JOB_INDEX" -lt "$MAX_JOBS" ]; then
     NEXT=$(sbatch --parsable --dependency=afterany:"$SLURM_JOB_ID" \
-        --export=ALL,JOB_INDEX=$((JOB_INDEX + 1)),CHAIN=$CHAIN,NEW_CHAIN=0 "$SCRIPT")
+        --export=ALL,RUN_DIR=$RUN_DIR,JOB_INDEX=$((JOB_INDEX + 1)),CHAIN=$CHAIN,NEW_CHAIN=0 "$SCRIPT")
     echo "job $JOB_INDEX of at most $MAX_JOBS; next job $NEXT queued"
 else
     echo "job $JOB_INDEX is the last one (MAX_JOBS=$MAX_JOBS)"

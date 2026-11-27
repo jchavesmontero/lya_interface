@@ -6,7 +6,9 @@ import numpy as np
 from cobaya.model import get_model
 from test_cobaya_graph import LinearFixture, ForestFixture, LikelihoodFixture
 from lya_interface.theory.lya_cosmology import LyaCosmology
-from lya_interface.diagnostics import evaluate_point, plot_point, minimize_point, estimate_local_errors
+from lya_interface.fit_core import evaluate_point, minimize_point
+from lya_interface.errors import estimate_local_errors
+from lya_interface.plots import plot_point
 
 
 def configuration(likelihood=LikelihoodFixture):
@@ -53,10 +55,10 @@ def test_minimization_returns_real_fitted_point_and_reports_budget_failure(capsy
 
 
 def test_native_blinding_shifts_diagnostics_not_scientific_predictions(monkeypatch):
-    from lya_interface.adapters import cup1d_backend
+    from lya_interface import cup1d_bridge
     from cup1d.utils.blinding import Blinding
     offsets = Blinding(dict(Delta2_star=.05, n_star=.01, alpha_star=.005))
-    monkeypatch.setattr(cup1d_backend, "native_blinding", lambda path: offsets)
+    monkeypatch.setattr(cup1d_bridge, "native_blinding", lambda path: offsets)
 
     class Blinded(LikelihoodFixture):
         def get_requirements(self):

@@ -1,5 +1,5 @@
 # joint_dr1p1d_forestmpggp_dr2bao_lya_kaiser_fixed_beta.yaml
-# at fixed cosmology: LaCE/cup1d Planck18_noBAO, the cosmology of the Vega DR2
+# at fixed cosmology: LaCE/cup1d Planck18_noBAO_wnu, the cosmology of the Vega DR2
 # template, so the BAO dilations are ap = at = 1. Also fixed: the filtering-scale
 # history at the mpg_central fiducial (igm_kF_kms_* = 1, the multiplicative factor
 # on it) and the P1D resolution corrections p1d_R_coeff_* at the best fit (not
